@@ -1,0 +1,16 @@
+# WHOLE BOARD
+BOARD_DIMENSIONS = (14, 6)
+
+# INPUT RESERVOIRS 2 CONCENTRATIONS
+# NEED TO MAKE RECONFIGURABLE
+INPUT_RESERVOIRS = [
+    (0, 0, 0),    # 0  
+    (0, 2, 100),  # 100 
+]
+
+# WASTE LOCATION ON RIGHT SIDE OF CHIP
+WASTE_RESERVOIR = (13, 2)
+
+# MODULE TYPES AVAILABLE
+VALID_MODULE_TYPES = ["mix", "heat", "detect", "storage", "input-zero", "input-one", "output"]
+
