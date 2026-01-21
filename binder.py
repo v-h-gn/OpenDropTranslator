@@ -1,46 +1,37 @@
+import copy
 from api import Op, Module, Holder
 
-def mods_by_type(modules: list[Module]) -> dict[str, list[Module]]:
-    """Generate a map of module types to lists of Module instances."""
-    modules_by_type: dict[str, list[Module]] = {}
-    for mod in modules:
-        if mod.type not in modules_by_type:
-            modules_by_type[mod.type] = []
-        modules_by_type[mod.type].append(mod)
-    return modules_by_type
-
 def left_edge_bind_modules(
-    scheduled_ops: list[Op], modules: list[Module], valid_modules: list[str]
+    scheduled_ops: list[Op], modules: list[Module], bindable_modules: list[str]
 ) -> None:
     """Bind scheduled operations to physical modules using a left-edge algorithm."""
-    modules_by_type = mods_by_type(modules)
-    # WE MAP EACH ACTIVE OPERATION TO A REAL PHYSICAL MODULE -> NO STORAGE OR IO
-    buckets: dict[str, list[Op]] = {}
-    for op in scheduled_ops:
-        if op.type not in valid_modules:
-            module_type = op.module or op.type
-            buckets.setdefault(module_type, []).append(
-                op
-            )  # PUT OPERATIONS INTO BUCKETS BASED ON MODTYPE
+    
+    # Key operations and modules by the type of action they perform.
+    ops_by_type = Op.ops_by_type(scheduled_ops)
+    modules_by_type = Module.mods_by_type(modules)
+    
+    # Sort operations of each type by start time (and end time for ties)
+    for module_type in ops_by_type:
+        ops_by_type[module_type].sort(key=lambda o: (o.start_time, o.end_time))
 
-    # PUT EARLIEST ONES FIRST
-    for module_type in buckets:
-        buckets[module_type].sort(key=lambda o: (o.start_time, o.end_time))
-
-    # GO THROUGH EVERY MODULE TYPE
+    # For each module type, bind operations to modules using left-edge strategy
     for module_type, mods in modules_by_type.items():
-        op_list = buckets.get(module_type, [])
+        # Make a shallow copy of the operation list to manipulate original operations but not destroy order
+        op_list = copy.copy(ops_by_type.get(module_type, []))
+        
+        # For each module of this type, while there are unbound operations, bind them
         for module in mods:
-            i = 0
-            while i < len(op_list):
-                op = op_list[i]
-                # IF OPERATION START GREATER THAN MODULES LAST END THEN IT IS FREE
+            while op_list:
+                op = op_list[0]
                 if op.start_time >= module.end_time:
                     op.module = module.id
                     module.end_time = op.end_time
-                    op_list.pop(i)
+                    op.bound = True
+                    op_list.pop(0)
                 else:
-                    i += 1
+                    op.delay(1)
+                    
+
 
 
 def bind_storage_to_holders(storage_shit: list[Op], holder_bois: list[Holder]) -> None:

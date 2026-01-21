@@ -24,7 +24,6 @@ def soukup(
     raise RuntimeError(f"No route found from {src} to {dst}")
 
 
-# MAIN ROUTER BLW
 def route(ops: list[Op], mods: dict[str, Module]) -> list[tuple[str, Route]]:
     """Routes droplets between operations based on their module assignments."""
 
@@ -36,6 +35,36 @@ def route(ops: list[Op], mods: dict[str, Module]) -> list[tuple[str, Route]]:
     for op in ops_sorted:
         module = mods[op.module]
         enter_cell = module.entrance
-        exit_cell = module.exit
+
+        for parent in op.parents:
+            parent_module = mods[parent.module]
+            exit_cell = parent_module.exit
+
+            # Collect no-go cells: occupied modules at this time
+            no_go_cells = set[Position]()
+            for other_op in ops_sorted:
+                if other_op == op or other_op == parent:
+                    continue
+                if (
+                    other_op.start_time <= op.start_time < other_op.end_time
+                    or other_op.start_time < parent.end_time <= other_op.end_time
+                ):
+                    other_module = mods[other_op.module]
+                    for dx in range(-other_module.pad, other_module.width + other_module.pad):
+                        for dy in range(-other_module.pad, other_module.height + other_module.pad):
+                            no_go_cells.add(
+                                Position(
+                                    other_module.pos.x + dx,
+                                    other_module.pos.y + dy,
+                                )
+                            )
+
+            # Find route from parent exit to current op entrance
+            droplet_route = soukup(
+                exit_cell,
+                enter_cell,
+                no_go_cells,
+            )
+            results.append((f"{parent.name}_to_{op.name}", droplet_route))
 
     return results

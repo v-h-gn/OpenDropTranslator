@@ -86,12 +86,53 @@ class Op:  # OPERATION IN SCHEDULE
 
     def __hash__(self) -> int:
         return hash(self.name)
+    
+    @staticmethod
+    def ops_by_type(ops: list["Op"]) -> dict[str, list["Op"]]:
+        """Generate a map of module types to lists of Op instances."""
+        ops_by_type: dict[str, list["Op"]] = {}
+        for op in ops:
+            if op.type not in ops_by_type:
+                ops_by_type[op.type] = []
+            ops_by_type[op.type].append(op)
+        return ops_by_type
+    
+    def delay(self, ticks: int) -> None:
+        """Delay the operation and all operations that depend on it by a given number of ticks."""
+        if self.children:
+            for child in self.children:
+                child.delay(ticks)
+        self.start_time += ticks
+        self.end_time += ticks
 
-
+    
+    
 @dataclass
-class Module:  # CHIP MODULE
+class Holder:  # STORAGE CAPACITY FOR MODULE
+    """Represents storage capacity for a module."""
+    capacity: int = 2  # HOW MANY DROPLETS
+    stored_droplets: int = 0
+
+    def has_space(self) -> bool:
+        """Check if there is available storage space."""
+        return self.stored_droplets < self.capacity
+    
+    def store(self) -> None:
+        """Store a droplet if there is space."""
+        if not self.has_space():
+            raise RuntimeError("No storage space available.")
+        self.stored_droplets += 1
+    
+    def retrieve(self) -> None:
+        """Retrieve a droplet if there are any stored."""
+        if self.stored_droplets <= 0:
+            raise RuntimeError("No droplets to retrieve.")
+        self.stored_droplets -= 1
+    
+@dataclass
+class Module: 
     """
-    Represents a module on the OpenDrop chip.
+    Represents a module on microfluidic chip.
 
     Attributes:
         pos (Position): The position of the module on the chip.
@@ -109,27 +150,51 @@ class Module:  # CHIP MODULE
     type: str 
     entrance: Position 
     exit: Position 
+    storage: Holder
     end_time: int = 0  
     width: int = 3
     height: int = 3
     pad: int = 1 
 
+    def available(self, tick: int) -> bool:
+        """Check if the module is free at the given tick."""
+        return self.end_time <= tick
 
-@dataclass
-class Holder:  # STORAGE CAPACITY FOR MODULE
+    def empty(self) -> bool:
+        """Check if the module has no stored droplets."""
+        return self.storage.stored_droplets == 0
     
-    name: str
-    id: str  # WHICH MODULE DOES HOLDER BELONG TO
-    start: int
-    end: int  # WHEN WINDOW IS AVAILABLE
-    cap: int = 2  # HOW MANY DROPLETS
-    used: int = 0
+    def full(self) -> bool:
+        """Check if the module's storage is full."""
+        return not self.storage.has_space()
+    
+    def has_space(self) -> bool:
+        """Check if the module has storage space available."""
+        return self.storage.has_space()
+    
+    @staticmethod
+    def mods_by_type(modules: list["Module"]) -> dict[str, list["Module"]]:
+        """Generate a map of module types to lists of Module instances."""
+        modules_by_type: dict[str, list["Module"]] = {}
+        for mod in modules:
+            if mod.type not in modules_by_type:
+                modules_by_type[mod.type] = []
+            modules_by_type[mod.type].append(mod)
+        return modules_by_type
 
+class Storage(Module):
+    """Storage module with increased capacity."""
+    def __init__(self, id: str, location: Position, capacity: int = 1):
+        super().__init__(pos=location, id=id, type="storage", entrance=location, exit=location, storage=Holder(capacity=capacity))
+
+class Reservoir(Module):
+    """Abstraction of I/O reservoir modules"""
+    def __init__(self, id: str, location: Position, capacity: int = 3):
+        super().__init__(pos=location, id=id, type="input", entrance=location, exit=location, storage=Holder(capacity=capacity))
 
 @dataclass
 class Route:
     """Droplet route from source to destination over time."""
-
     src: Position
     dst: Position
     path: list[Position]
