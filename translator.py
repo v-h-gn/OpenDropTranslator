@@ -1,10 +1,11 @@
 import argparse
+import json
 
 from scheduler import load_ops_from_dot as load_from_dot, list_scheduler as schedule
-
 parser = argparse.ArgumentParser(description="Translate dot graph to OpenDrop instructions.")
 parser.add_argument("input_dot", type=str, help="Path to input dot file representing the operation graph.")
 parser.add_argument("output_instructions", type=str, help="Path to output file for OpenDrop instructions.")
+parser.add_argument("--module_topology", type=str, help="Path to JSON file specifying module locations and sizes.")
 parser.add_argument("--width", type=int, default=6, help="Width of the OpenDrop board.")
 parser.add_argument("--height", type=int, default=14, help="Height of the OpenDrop board.")
 parser.add_argument("--heaters", type=int, default=3, help="Number of heating modules available.")
@@ -22,7 +23,7 @@ BOARD_DIMENSIONS = (args.height, args.width)
 # WASTE LOCATION ON RIGHT SIDE OF CHIP
 WASTE_RESERVOIR = (args.height - 1, 2)
 
-num_inputs = args.inputs
+num_inputs: int = args.inputs
 
 BINDABLE_MODULES = ["mix", "heat", "detect"]
 
@@ -38,3 +39,8 @@ for i in range(num_inputs):
 
 scheduled_ops = schedule(load_from_dot(args.input_dot), AVAILABLE_MODULES)
 
+if args.module_topology:
+    with open(args.module_topology, "r") as f:
+        topology = json.load(f)
+
+        

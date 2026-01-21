@@ -5,8 +5,8 @@ from networkx.drawing.nx_pydot import read_dot
 # LOAD OPERATIONS FROM DOT FILE AND RETURN LIST
 def load_ops_from_dot(filepath: str):
     op_graph = read_dot(filepath)
-    op_dict = dict[str, Op]()
-    mixing_ops = list[str]()
+    op_dict: dict[str, Op] = {}
+    mixing_ops: list[str] = []
 
     # CREATE ALL THE OPERATIONS
     for nid, attrs in op_graph.nodes(data=True):
@@ -53,7 +53,7 @@ def list_scheduler(ops: list[Op], available_modules: dict[str, int]) -> list[Op]
         # CHECK IF ANY RUNNING OPERATIONS FINISHED
         terminating_ops = list[Op]()
         for op in running_ops:
-            if op.end == tick:
+            if op.end_time == tick:
                 # print(f"Operation {op.name}-({op.type}) finished at time {tick}")
                 terminating_ops.append(op)
         # REMOVE FINISHED OPERATIONS FROM RUNNING LIST
@@ -65,7 +65,7 @@ def list_scheduler(ops: list[Op], available_modules: dict[str, int]) -> list[Op]
         scheduleable_ops = list[Op]()
         for op in ops:
             # CHECK IF NOT SCHEDULED AND PARENTS DONE
-            if op.start == -1 and op.parents_done(tick):
+            if op.start_time == -1 and op.parents_done(tick):
                 # print(f"Operation {op.name}-({op.type}) is ready to schedule at time {tick}")
                 scheduleable_ops.append(op)
 
@@ -75,8 +75,8 @@ def list_scheduler(ops: list[Op], available_modules: dict[str, int]) -> list[Op]
             # print(f"Modules busy for {op.type}: {modules_busy[op.type]}, Available: {available_modules[op.type]}")
             if modules_busy[op.type] < available_modules[op.type]:
                 modules_busy[op.type] += 1
-                op.start = tick
-                op.end = tick + op.duration
+                op.start_time = tick
+                op.end_time = tick + op.duration
                 op.module = f"{op.type}-{modules_busy[op.type]-1}"
                 running_ops.append(op)
                 scheduled_ops.append(op)

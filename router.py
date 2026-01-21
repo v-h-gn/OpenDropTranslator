@@ -25,26 +25,18 @@ def soukup(
 
 
 # MAIN ROUTER BLW
-def route(
-    ops: list[Op], mods: dict[str, Module]
-) -> list[tuple[str, Route]]:
+def route(ops: list[Op], mods: dict[str, Module]) -> list[tuple[str, Route]]:
     """Routes droplets between operations based on their module assignments."""
-    
+    pass
+
     results = list[tuple[str, Route]]()
-    
+
     # Ensure ops are sorted by start time
-    ops_sorted = sorted(ops, key=lambda o: o.start)
+    ops_sorted = sorted(ops, key=lambda o: o.start_time)
 
     for op in ops_sorted:
         module = mods[op.module]
         enter_cell = module.entrance
         exit_cell = module.exit
 
-        
-        
-        
-        
-
-
-    
     return results
