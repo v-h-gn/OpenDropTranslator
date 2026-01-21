@@ -1,12 +1,22 @@
 from api import Op, Module, Holder
 
+def mods_by_type(modules: list[Module]) -> dict[str, list[Module]]:
+    """Generate a map of module types to lists of Module instances."""
+    modules_by_type: dict[str, list[Module]] = {}
+    for mod in modules:
+        if mod.type not in modules_by_type:
+            modules_by_type[mod.type] = []
+        modules_by_type[mod.type].append(mod)
+    return modules_by_type
 
 def left_edge_bind_modules(
-    V: list[Op], modules_by_type: dict[str, list[Module]], valid_modules: list[str]
+    scheduled_ops: list[Op], modules: list[Module], valid_modules: list[str]
 ) -> None:
+    """Bind scheduled operations to physical modules using a left-edge algorithm."""
+    modules_by_type = mods_by_type(modules)
     # WE MAP EACH ACTIVE OPERATION TO A REAL PHYSICAL MODULE -> NO STORAGE OR IO
     buckets: dict[str, list[Op]] = {}
-    for op in V:
+    for op in scheduled_ops:
         if op.type not in valid_modules:
             module_type = op.module or op.type
             buckets.setdefault(module_type, []).append(

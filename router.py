@@ -27,7 +27,6 @@ def soukup(
 # MAIN ROUTER BLW
 def route(ops: list[Op], mods: dict[str, Module]) -> list[tuple[str, Route]]:
     """Routes droplets between operations based on their module assignments."""
-    pass
 
     results = list[tuple[str, Route]]()
 
