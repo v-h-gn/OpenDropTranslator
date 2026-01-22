@@ -1,0 +1,31 @@
+{
+    "modules": [
+        {
+            "pos": [0, 0],
+            "id": "input-0",
+            "type": "input",
+            "entrance": [1, 1],
+            "exit": [2, 1],
+            "width": 2,
+            "height": 2
+        },
+        {
+            "pos": [14, 0],
+            "id": "input-1",
+            "type": "input",
+            "entrance": [1, 1],
+            "exit": [2, 1],
+            "width": 3,
+            "height": 3
+        },
+        {
+            "pos": [2, 3],
+            "id": "mix-0",
+            "type": "mix",
+            "entrance": [0, 1],
+            "exit": [2, 1],
+            "width": 4,
+            "height": 2
+        }
+    ]
+}

@@ -28,13 +28,13 @@ def left_edge_bind_modules(
                         op.bound = True
                         op_list.pop(0)
     
-                    
+# @TODO HANDLE STORAGE MODULES WITH HOLDERS
 
 def bind_storage_to_holders(storage_shit: list[Op], holder_bois: list[Holder]) -> None:
     # SORT THIS SHIT BY TIME STORAGE WAIT TIMES IN ORDER
     storage_shit.sort(key=lambda s: (s.start_time, s.end_time))
     # SORT FIRST BY FIXED MODULE LOCATION THEN BY TIME
-    holder_bois.sort(key=lambda h: (h.id, h.start, h.end))
+    holder_bois.sort(key=lambda h: (h.id, h.start, h.end)) 
 
     i = 0
     while i < len(storage_shit):

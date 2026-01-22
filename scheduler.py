@@ -43,8 +43,11 @@ def can_schedule(op: Op, tick: int, modules_busy: dict[str, int], available_modu
     
     return True
 
-def list_scheduler(ops: list[Op], available_modules: dict[str, int]) -> list[Op]:
+def list_scheduler(ops: list[Op], available_modules: dict[str, int], max_droplets: int | None = None) -> list[Op]:
     """Schedules operations based on available modules using a simple list scheduling algorithm."""
+
+    max_droplets = max_droplets if max_droplets is not None else sum(available_modules.values()) 
+    
 
     # Initialize scheduling structures
     scheduled_ops = list[Op]()
@@ -96,7 +99,17 @@ def list_scheduler(ops: list[Op], available_modules: dict[str, int]) -> list[Op]
                     scheduled_ops.append(parent)
                 elif (parent.end_time < tick):
                     # Create storage operation, schedule it, and insert between parent and op.
-                    pass
+                    storage_op = Op(
+                        name=f"storage_{parent.name}_to_{op.name}",
+                        type="storage",
+                        duration=1,
+                        parents=[parent],
+                        children=[op],
+                    )
+                    parent.children.remove(op)
+                    parent.children.append(storage_op)
+                    op.parents.remove(parent)
+                    op.parents.append(storage_op)
             
             for child in op.children:
                 if child not in candidate_ops and child.parents_scheduled():
