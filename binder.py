@@ -1,4 +1,3 @@
-import copy
 from api import Op, Module, Holder
 
 def left_edge_bind_modules(
@@ -16,23 +15,20 @@ def left_edge_bind_modules(
 
     # For each module type, bind operations to modules using left-edge strategy
     for module_type, mods in modules_by_type.items():
-        # Make a shallow copy of the operation list to manipulate original operations but not destroy order
-        op_list = copy.copy(ops_by_type.get(module_type, []))
-        
-        # For each module of this type, while there are unbound operations, bind them
-        for module in mods:
-            while op_list:
-                op = op_list[0]
-                if op.start_time >= module.end_time:
-                    op.module = module.id
-                    module.end_time = op.end_time
-                    op.bound = True
-                    op_list.pop(0)
-                else:
-                    op.delay(1)
+        # Get the list of operations of this type
+        if (module_type in bindable_modules):
+            op_list = ops_by_type.get(module_type, [])
+            # For each module of this type, while there are unbound operations, bind them
+            for module in mods:
+                while op_list:
+                    op = op_list[0]
+                    if op.start_time >= module.end_time:
+                        op.module = module.id
+                        module.end_time = op.end_time
+                        op.bound = True
+                        op_list.pop(0)
+    
                     
-
-
 
 def bind_storage_to_holders(storage_shit: list[Op], holder_bois: list[Holder]) -> None:
     # SORT THIS SHIT BY TIME STORAGE WAIT TIMES IN ORDER

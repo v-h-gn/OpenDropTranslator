@@ -1,7 +1,6 @@
 from typing import NamedTuple
 from dataclasses import dataclass, field
 
-
 @dataclass(eq=True)
 class Position(NamedTuple):
     """Position on the OpenDrop chip grid."""
@@ -33,7 +32,6 @@ class Position(NamedTuple):
 
         return abs(pos1.x - pos2.x) <= 1 and abs(pos1.y - pos2.y) <= 1
 
-
 @dataclass(eq=True)
 class Op:  # OPERATION IN SCHEDULE
     """
@@ -62,21 +60,37 @@ class Op:  # OPERATION IN SCHEDULE
     parents: list["Op"] = field(default_factory=list["Op"])  # PARENT OPERATIONS
     children: list["Op"] = field(default_factory=list["Op"])  # CHILD OPERATIONS
 
-    def parents_done(self, tick: int) -> bool:
-        """Check if all parent operations are scheduled and completed by the given tick."""
-        for parent in self.parents:
-            if parent.end_time == -1 or parent.end_time > tick:
-                return False
-        return True
+    def parents_scheduled(self) -> bool:
+        """Check if all parent operations are scheduled"""
+        return all(parent.is_scheduled() for parent in self.parents)
+    
+    def delay(self, ticks: int) -> None:
+        """Delay the operation and all operations that depend on it by a given number of ticks."""
+        if self.children:
+            for child in self.children:
+                child.delay(ticks)
+        self.start_time += ticks
+        self.end_time += ticks
+    
+    def critical_path_length(self) -> int:
+        """Calculate the length of the critical path from this operation to the end."""
+        if not self.children:
+            return self.duration
+        return self.duration + max(child.critical_path_length() for child in self.children)
+    
+    def is_scheduled(self) -> bool:
+        """Check if the operation has been scheduled."""
+        return self.start_time != -1 and self.end_time != -1
 
-    def parents_done_ignore(self, tick: int, ignore: set["Op"]) -> bool:
-        """Check if all parent operations (excluding those in ignore set) are completed by the given tick."""
-        for parent in self.parents:
-            if parent in ignore:
-                continue
-            if parent.end_time == -1 or parent.end_time > tick:
-                return False
-        return True
+    def is_input(self) -> bool:
+        """Check if the operation is an input operation."""
+        return self.type.startswith("input")
+
+    def input_type(self) -> str:
+        """Get the specific type of input operation."""
+        if self.is_input():
+            return self.type.split("-")[-1]
+        raise RuntimeError("Operation is not an input operation.")
 
     def __str__(self) -> str:
         return f"Op({self.name}, {self.type}, {self.start_time}-{self.end_time}, module={self.module})"
@@ -96,14 +110,6 @@ class Op:  # OPERATION IN SCHEDULE
                 ops_by_type[op.type] = []
             ops_by_type[op.type].append(op)
         return ops_by_type
-    
-    def delay(self, ticks: int) -> None:
-        """Delay the operation and all operations that depend on it by a given number of ticks."""
-        if self.children:
-            for child in self.children:
-                child.delay(ticks)
-        self.start_time += ticks
-        self.end_time += ticks
 
     
     
@@ -189,8 +195,26 @@ class Storage(Module):
 
 class Reservoir(Module):
     """Abstraction of I/O reservoir modules"""
+    def __init__(self, id: str, location: Position, capacity: int):
+        super().__init__(pos=location, id=id, type="reservoir", entrance=location, exit=location, storage=Holder(capacity=capacity))
+
+class InputModule(Reservoir):
+    """Input reservoir module"""
     def __init__(self, id: str, location: Position, capacity: int = 3):
-        super().__init__(pos=location, id=id, type="input", entrance=location, exit=location, storage=Holder(capacity=capacity))
+        super().__init__(id=id, location=location, capacity=capacity)
+        self.type ="input"
+
+class OutputModule(Reservoir):
+    """Output reservoir module"""
+    def __init__(self, id: str, location: Position, capacity: int = 3):
+        super().__init__(id=id, location=location, capacity=capacity)
+        self.type = "output"
+
+class WasteModule(Reservoir):
+    """Waste reservoir module"""
+    def __init__(self, id: str, location: Position, capacity: int = 10):
+        super().__init__(id=id, location=location, capacity=capacity)
+        self.type = "waste"
 
 @dataclass
 class Route:
