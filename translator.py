@@ -3,8 +3,10 @@ import json
 
 from api import Module, Holder
 
-from scheduler import load_ops_from_dot as load_from_dot, list_scheduler as schedule
 
+from scheduler import load_ops_from_dot as load_from_dot, list_scheduler as schedule
+from placer import left_edge_bind_modules as placer
+from router import route as router
 
 parser = argparse.ArgumentParser(description="Translate dot graph to OpenDrop instructions.")
 parser.add_argument("input_dot", type=str, help="Path to input dot file representing the operation graph.")
@@ -38,7 +40,7 @@ if args.module_topology:
         for mod in topology["modules"]:
             modules_list.append(
                 Module(
-                    pos=mod["position"],
+                    pos=mod["pos"],
                     id=mod["id"],
                     type=mod["type"],
                     entrance=mod["entrance"],
@@ -49,6 +51,8 @@ if args.module_topology:
                     pad=mod.get("pad", 1)
                 )
             )
+
+modules_by_id = {mod.id: mod for mod in modules_list}
 
 max_droplets: int | None = args.max_droplets
 
@@ -66,3 +70,7 @@ AVAILABLE_MODULES: dict[str, int] = {
     "waste": wastes,
 }
 scheduled_ops = schedule(load_from_dot(args.input_dot), AVAILABLE_MODULES, max_droplets)
+
+placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
+
+routes = router(scheduled_ops, modules_by_id)

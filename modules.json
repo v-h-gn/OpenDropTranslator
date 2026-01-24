@@ -1,31 +1,64 @@
 {
     "modules": [
         {
-            "pos": [0, 0],
+            "pos": [1, 1],
             "id": "input-0",
-            "type": "input",
+            "type": "input-zero",
             "entrance": [1, 1],
-            "exit": [2, 1],
-            "width": 2,
-            "height": 2
+            "exit": [1, 1],
+            "storage": 1,
+            "width": 1,
+            "height": 1
         },
         {
-            "pos": [14, 0],
+            "pos": [14, 12],
             "id": "input-1",
-            "type": "input",
-            "entrance": [1, 1],
-            "exit": [2, 1],
-            "width": 3,
-            "height": 3
+            "type": "input-one",
+            "entrance": [14, 1],
+            "exit": [14, 1],
+            "storage": 1,
+            "width": 1,
+            "height": 1
         },
         {
             "pos": [2, 3],
             "id": "mix-0",
             "type": "mix",
-            "entrance": [0, 1],
-            "exit": [2, 1],
+            "entrance": [2, 3],
+            "exit": [2, 3],
+            "storage": 1,
             "width": 4,
             "height": 2
+        },
+        {
+            "pos": [14, 7],
+            "id": "output-0",
+            "type": "output",
+            "entrance": [14, 7],
+            "exit": [14, 7],
+            "storage": 1,
+            "width": 1,
+            "height": 1
+        },
+        {
+            "pos": [7, 0],
+            "id": "storage-0",
+            "type": "storage",
+            "entrance": [7, 0],
+            "exit": [7, 0],
+            "storage": 1,
+            "width": 1,
+            "height": 1
+        },
+        {
+            "pos": [1, 7],
+            "id": "waste-0",
+            "type": "waste",
+            "entrance": [1, 7],
+            "exit": [1, 7],
+            "storage": 1,
+            "width": 1,
+            "height": 1
         }
     ]
 }

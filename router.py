@@ -50,6 +50,7 @@ def route(ops: list[Op], mods: dict[str, Module]) -> list[tuple[str, Route]]:
                     or other_op.start_time < parent.end_time <= other_op.end_time
                 ):
                     other_module = mods[other_op.module]
+
                     for dx in range(-other_module.pad, other_module.width + other_module.pad):
                         for dy in range(-other_module.pad, other_module.height + other_module.pad):
                             no_go_cells.add(

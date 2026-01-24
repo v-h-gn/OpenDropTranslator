@@ -1,7 +1,6 @@
 from typing import Callable, NamedTuple
 from dataclasses import dataclass, field
 
-@dataclass(eq=True)
 class Position(NamedTuple):
     """Position on the OpenDrop chip grid."""
     x: int
@@ -115,7 +114,7 @@ class Op:  # OPERATION IN SCHEDULE
         raise RuntimeError("Operation is not a waste operation.")
 
     def __str__(self) -> str:
-        return f"Op({self.name}, {self.type}, {self.start_time}-{self.end_time}, module={self.module})"
+        return f"Op {self.name} of type {self.type} runs from {self.start_time}-{self.end_time} on module {self.module}"
 
     def __repr__(self) -> str:
         return f"Op({self.name}-{self.type})"
@@ -207,6 +206,9 @@ class Module:
                 modules_by_type[mod.type] = []
             modules_by_type[mod.type].append(mod)
         return modules_by_type
+    
+    def __repr__(self) -> str:
+        return f"Module({self.id}-{self.type})"
 
 class Storage(Module):
     """Storage module with increased capacity."""
