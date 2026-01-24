@@ -145,13 +145,13 @@ def list_scheduler(ops: list[Op], available_modules: dict[str, int], max_droplet
                 if child_not_candidate and child_parents_scheduled:
                     candidate_ops.append(child)
 
-
         tick += 1
+    
     # offset negative start times to start at zero
     min_start_time = min(op.start_time for op in scheduled_ops)
     if min_start_time < 0:
         for op in scheduled_ops:
             op.delay(-min_start_time)
 
-    
+
     return scheduled_ops
