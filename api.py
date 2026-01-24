@@ -1,4 +1,4 @@
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 from dataclasses import dataclass, field
 
 @dataclass(eq=True)
@@ -60,9 +60,11 @@ class Op:  # OPERATION IN SCHEDULE
     parents: list["Op"] = field(default_factory=list["Op"])  # PARENT OPERATIONS
     children: list["Op"] = field(default_factory=list["Op"])  # CHILD OPERATIONS
 
-    def parents_scheduled(self) -> bool:
+    def parents_scheduled(self, excluding: Callable[["Op"], bool] | None = None) -> bool:
         """Check if all parent operations are scheduled"""
-        return all(parent.is_scheduled() for parent in self.parents)
+        if excluding is None:
+            return all(parent.is_scheduled() for parent in self.parents)
+        return all(parent.is_scheduled() or excluding(parent) for parent in self.parents)
     
     def delay(self, ticks: int) -> None:
         """Delay the operation and all operations that depend on it by a given number of ticks."""
@@ -92,6 +94,26 @@ class Op:  # OPERATION IN SCHEDULE
             return self.type.split("-")[-1]
         raise RuntimeError("Operation is not an input operation.")
 
+    def is_output(self) -> bool:
+        """Check if the operation is an output operation."""
+        return self.type.startswith("output")
+    
+    def output_type(self) -> str:
+        """Get the specific type of output operation."""
+        if self.is_output():
+            return self.type.split("-")[-1]
+        raise RuntimeError("Operation is not an output operation.")
+    
+    def is_waste(self) -> bool:
+        """Check if the operation is a waste operation."""
+        return self.type.startswith("waste")
+    
+    def waste_type(self) -> str:
+        """Get the specific type of waste operation."""
+        if self.is_waste():
+            return self.type.split("-")[-1]
+        raise RuntimeError("Operation is not a waste operation.")
+
     def __str__(self) -> str:
         return f"Op({self.name}, {self.type}, {self.start_time}-{self.end_time}, module={self.module})"
 
@@ -111,8 +133,6 @@ class Op:  # OPERATION IN SCHEDULE
             ops_by_type[op.type].append(op)
         return ops_by_type
 
-    
-    
 @dataclass
 class Holder:  # STORAGE CAPACITY FOR MODULE
     """Represents storage capacity for a module."""
