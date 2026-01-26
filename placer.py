@@ -1,4 +1,5 @@
-from api import Op, Module
+from api.op import Op
+from api.module import Module
 
 def left_edge_bind_modules(
     scheduled_ops: list[Op], modules: list[Module], bindable_modules: list[str]
