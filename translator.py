@@ -7,9 +7,6 @@ from scheduler import list_scheduler as schedule
 from placer import left_edge_bind_modules as placer
 from router import route as router
 
-
-    
-
 parser = argparse.ArgumentParser(
     description="Translate dot graph to OpenDrop instructions."
 )

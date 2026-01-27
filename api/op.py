@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 from networkx.drawing.nx_pydot import read_dot
 
+from api.util import Type
 
 
 @dataclass(eq=True)
@@ -24,7 +25,7 @@ class Op:  # OPERATION IN SCHEDULE
     """
 
     id: str  # M1
-    type: str  # MIX HEAT
+    type: Type 
     duration: int
     start_time: int = -1  # START TIME
     end_time: int = -1  # END TIME
@@ -64,36 +65,6 @@ class Op:  # OPERATION IN SCHEDULE
         """Check if the operation has been scheduled."""
         return self.start_time != -1 and self.end_time != -1
 
-    def is_input(self) -> bool:
-        """Check if the operation is an input operation."""
-        return self.type.startswith("input")
-
-    def input_type(self) -> str:
-        """Get the specific type of input operation."""
-        if self.is_input():
-            return self.type.split("-")[-1]
-        raise RuntimeError("Operation is not an input operation.")
-
-    def is_output(self) -> bool:
-        """Check if the operation is an output operation."""
-        return self.type.startswith("output")
-
-    def output_type(self) -> str:
-        """Get the specific type of output operation."""
-        if self.is_output():
-            return self.type.split("-")[-1]
-        raise RuntimeError("Operation is not an output operation.")
-
-    def is_waste(self) -> bool:
-        """Check if the operation is a waste operation."""
-        return self.type.startswith("waste")
-
-    def waste_type(self) -> str:
-        """Get the specific type of waste operation."""
-        if self.is_waste():
-            return self.type.split("-")[-1]
-        raise RuntimeError("Operation is not a waste operation.")
-
     def __str__(self) -> str:
         return f"Op {self.id} of type {self.type} runs from {self.start_time}-{self.end_time} on module {self.module}"
 
@@ -104,14 +75,39 @@ class Op:  # OPERATION IN SCHEDULE
         return hash(self.id)
 
     @staticmethod
-    def ops_by_type(ops: list["Op"]) -> dict[str, list["Op"]]:
+    def ops_by_type(ops: list["Op"]) -> dict[Type, list["Op"]]:
         """Generate a map of module types to lists of Op instances."""
-        ops_by_type: dict[str, list["Op"]] = {}
+        ops_by_type: dict[Type, list["Op"]] = {}
         for op in ops:
             if op.type not in ops_by_type:
                 ops_by_type[op.type] = []
             ops_by_type[op.type].append(op)
         return ops_by_type
+
+class StorageOp(Op):
+    """Represents a storage operation."""
+    def __init__(self, id: str, duration: int):
+        super().__init__(id=id, type=Type.STORAGE, duration=duration)
+
+class ReservoirOp(Op):
+    """Represents a reservoir operation."""
+    def __init__(self, id: str, type: Type, duration: int):
+        super().__init__(id=id, type=type, duration=duration)
+
+class InputOp(ReservoirOp):
+    """Represents an input operation."""
+    def __init__(self, id: str, input_type: Type, duration: int):
+        super().__init__(id=id, type=input_type, duration=duration)
+
+class OutputOp(ReservoirOp):
+    """Represents an output operation."""
+    def __init__(self, id: str, duration: int):
+        super().__init__(id=id, type=Type.OUTPUT, duration=duration)
+
+class WasteOp(ReservoirOp):
+    """Represents a waste operation."""
+    def __init__(self, id: str, duration: int):
+        super().__init__(id=id, type=Type.WASTE, duration=duration)
 
 def load_ops_from_dot(filepath: str):
     op_graph = read_dot(filepath)
@@ -122,14 +118,14 @@ def load_ops_from_dot(filepath: str):
     for nid, attrs in op_graph.nodes(data=True):
         label = (attrs.get("label") or "").strip('"')
         if label == "mix":
-            op_dict[nid] = Op(nid, type="mix", duration=12)
+            op_dict[nid] = Op(nid, type=Type.MIX, duration=12)
             mixing_ops.append(nid)
         elif label == "(0,1)":
-            op_dict[nid] = Op(nid, type="input-0", duration=6)
+            op_dict[nid] = InputOp(nid, duration=6, input_type=Type.INPUT_0)
         elif label == "(1,1)":
-            op_dict[nid] = Op(nid, type="input-1", duration=6)
+            op_dict[nid] = InputOp(nid, duration=6, input_type=Type.INPUT_1)
         else:
-            op_dict[nid] = Op(nid, type="other", duration=3)
+            raise ValueError(f"Unknown operation label: {label}")
 
     # CONNECT PARENTS AND CHILDREN
     for src, dst in op_graph.edges():
@@ -140,12 +136,12 @@ def load_ops_from_dot(filepath: str):
     for nid in mixing_ops:
         child_count = len(op_dict[nid].children)
         if child_count == 1:
-            waste_operation = Op("waste_" + nid, type="waste", duration=1)
+            waste_operation = WasteOp("waste_" + nid, duration=1)
             op_dict[waste_operation.id] = waste_operation
             op_dict[nid].children.append(waste_operation)
             waste_operation.parents.append(op_dict[nid])
         elif child_count == 0:
-            output_operation = Op("output_" + nid, type="output", duration=1)
+            output_operation = OutputOp("output_" + nid, duration=1)
             op_dict[output_operation.id] = output_operation
             op_dict[nid].children.append(output_operation)
             output_operation.parents.append(op_dict[nid])

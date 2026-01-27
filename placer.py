@@ -1,8 +1,10 @@
 from api.op import Op
 from api.module import Module
 
+from api.util import Type
+
 def left_edge_bind_modules(
-    scheduled_ops: list[Op], modules: list[Module], bindable_modules: list[str]
+    scheduled_ops: list[Op], modules: list[Module], bindable_modules: list[Type]
 ) -> None:
     """Bind scheduled operations to physical modules using a left-edge algorithm."""
     

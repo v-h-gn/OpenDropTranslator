@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from util import Position
+from api.util import Position
 
 @dataclass
 class Route:

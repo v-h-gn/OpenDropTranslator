@@ -1,6 +1,6 @@
 from api.module import Module, load_modules
 from api.op import load_ops_from_dot as load_graph
-from api.util import Position
+from api.util import Position, Type
 
 
 from scheduler import list_scheduler as scheduler
@@ -8,12 +8,12 @@ from placer import left_edge_bind_modules as placer
 from router import route as router, print_route
 
 AVAILABLE_MODULES = {
-        "mix": 1,
-        "input-0": 1,
-        "input-1": 1,
-        "output": 1,
-        "storage": 2,
-        "waste": 1,
+        Type.MIX: 1,
+        Type.INPUT_0: 1,
+        Type.INPUT_1: 1,
+        Type.OUTPUT: 1,
+        Type.STORAGE: 2,
+        Type.WASTE: 1,
 }
 
 def test_position():
@@ -29,21 +29,21 @@ def test_position():
 def test_scheduler():
 
     print("Testing scheduler with smallgraph.dot...")
-    ops = load_graph("smallgraph.dot")
+    ops = load_graph("example_protocols/smallgraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
     for op in schedule:
         print(op)
     print("---")
 
     print("Testing scheduler with mediumgraph.dot...")
-    ops = load_graph("mediumgraph.dot")
+    ops = load_graph("example_protocols/mediumgraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
     for op in schedule:
         print(op)
     print("---")
 
     print("Testing scheduler with largegraph.dot...")
-    ops = load_graph("largegraph.dot")
+    ops = load_graph("example_protocols/largegraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
     for op in schedule:
         print(op)
@@ -52,7 +52,7 @@ def test_scheduler():
 
 def test_binder():
     print("Testing binder with smallgraph.dot...")
-    ops = load_graph("smallgraph.dot")
+    ops = load_graph("example_protocols/smallgraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
     for op in schedule:
         print(op)
@@ -60,6 +60,9 @@ def test_binder():
     modules_list: list[Module] = load_modules("modules.json")
 
     placer(schedule, modules_list, list(AVAILABLE_MODULES.keys()))
+
+    mods_by_id = {mod.id: mod for mod in modules_list}
+    print(mods_by_id)
 
     for op in schedule:
         print(op)
@@ -69,9 +72,9 @@ def test_binder():
 def test_router():
 
     print("Testing router with smallgraph.dot...")
-    ops = load_graph("smallgraph.dot")
+    ops = load_graph("example_protocols/smallgraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
-
+    
     print("Binding modules...")
     modules_list: list[Module] = load_modules("modules.json")
 
@@ -79,6 +82,8 @@ def test_router():
 
     mods_by_id = {mod.id: mod for mod in modules_list}
     print(mods_by_id)
+    for op in schedule:
+        print(op)
     print("Routing droplets...")
 
     routes = router(schedule, mods_by_id)
@@ -89,6 +94,6 @@ def test_router():
 
 if __name__ == "__main__":
     test_position()
-    test_scheduler()
-    test_binder()
+    #test_scheduler()
+    #test_binder()
     test_router()

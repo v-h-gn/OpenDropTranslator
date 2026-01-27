@@ -1,4 +1,5 @@
 
+from enum import Enum
 from typing import NamedTuple
 
 class Position(NamedTuple):
@@ -34,3 +35,23 @@ class Position(NamedTuple):
             return False
 
         return abs(pos1.x - pos2.x) <= 1 and abs(pos1.y - pos2.y) <= 1
+    
+class Droplet(NamedTuple):
+    """Represents a type of fluid used in operations."""
+    id: str  # Unique identifier for the droplet
+    concentration: int  # Concentration of the fluid
+    volume: int = 1  # Volume in location units
+    denominator: int = 256  # Denominator for concentration (e.g., 1/denominator)
+    
+    def __str__(self) -> str:
+        return f"Droplet(id={self.id}, concentration={self.concentration/self.denominator}, volume={self.volume})"
+    
+class Type(Enum):
+    MIX = "mix"
+    HEAT = "heat"
+    DETECT = "detect"
+    INPUT_0 = "input-0"
+    INPUT_1 = "input-1"
+    OUTPUT = "output"
+    STORAGE = "storage"
+    WASTE = "waste"

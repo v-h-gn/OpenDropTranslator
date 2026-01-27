@@ -1,7 +1,8 @@
 import json
 
 from dataclasses import dataclass
-from util import Position
+from api.util import Position, Type
+
 
 @dataclass
 class Holder:  # STORAGE CAPACITY FOR MODULE
@@ -35,7 +36,7 @@ class Module:
     Attributes:
         pos (Position): The position of the module on the chip.
         id (str): The unique identifier for the module.
-        type (str): The type of the module (e.g., mix, heat).
+        type (Type): The type of the module (e.g., mix, heat).
         entrance (Position): The entrance position for droplets entering the module.
         exit (Position): The exit position for droplets leaving the module.
         end_time (int): The end time of the last operation assigned to this module.
@@ -46,7 +47,7 @@ class Module:
 
     pos: Position
     id: str
-    type: str
+    type: Type
     entrances: list[Position]
     exits: list[Position]
     storage: Holder
@@ -83,9 +84,9 @@ class Module:
         return self.exits[self.storage.stored_droplets]
 
     @staticmethod
-    def mods_by_type(modules: list["Module"]) -> dict[str, list["Module"]]:
+    def mods_by_type(modules: list["Module"]) -> dict[Type, list["Module"]]:
         """Generate a map of module types to lists of Module instances."""
-        modules_by_type: dict[str, list["Module"]] = {}
+        modules_by_type: dict[Type, list["Module"]] = {}
         for mod in modules:
             if mod.type not in modules_by_type:
                 modules_by_type[mod.type] = []
@@ -93,60 +94,43 @@ class Module:
         return modules_by_type
 
     def __repr__(self) -> str:
-        return f"Module({self.id}-{self.type})"
-
-
-class Storage(Module):
-    """Storage module with increased capacity."""
-
-    def __init__(self, id: str, location: Position, capacity: int = 1):
-        super().__init__(
-            pos=location,
-            id=id,
-            type="storage",
-            entrances=[location],
-            exits=[location],
-            storage=Holder(capacity=capacity),
-        )
-
+        return f"Module: {self.id}, Type: {self.type}"
 
 class Reservoir(Module):
-    """Abstraction of I/O reservoir modules"""
-
-    def __init__(self, id: str, location: Position, capacity: int):
+    """Represents a reservoir module."""
+    def __init__(
+        self,
+        pos: Position,
+        id: str,
+        type: Type,
+        entrance: Position,
+        exit: Position,
+        storage: Holder,
+        width: int = 3,
+        height: int = 3,
+        pad: int = 1,
+    ):
         super().__init__(
-            pos=location,
+            pos=pos,
             id=id,
-            type="reservoir",
-            entrances=[location],
-            exits=[location],
-            storage=Holder(capacity=capacity),
+            type=type,
+            entrances=[entrance],
+            exits=[exit],
+            storage=storage,
+            width=width,
+            height=height,
+            pad=pad,
         )
-        self.storage.stored_droplets = capacity  # Reservoirs start full
-
-
-class InputModule(Reservoir):
-    """Input reservoir module"""
-
-    def __init__(self, id: str, location: Position, capacity: int = 3):
-        super().__init__(id=id, location=location, capacity=capacity)
-        self.type = "input"
-
-
-class OutputModule(Reservoir):
-    """Output reservoir module"""
-
-    def __init__(self, id: str, location: Position, capacity: int = 3):
-        super().__init__(id=id, location=location, capacity=capacity)
-        self.type = "output"
-
-
-class WasteModule(Reservoir):
-    """Waste reservoir module"""
-
-    def __init__(self, id: str, location: Position, capacity: int = 10):
-        super().__init__(id=id, location=location, capacity=capacity)
-        self.type = "waste"
+    
+    def store(self) -> Position:
+        """Store a droplet in the reservoir module's storage. Returns entrance position."""
+        self.storage.store()
+        return self.entrances[0]
+    
+    def retrieve(self) -> Position:
+        """Retrieve a droplet from the reservoir module's storage. Returns exit position."""
+        self.storage.retrieve()
+        return self.exits[0]
 
 def load_modules(filename: str) -> list[Module]:
     """Load module definitions from a JSON file."""
@@ -156,36 +140,40 @@ def load_modules(filename: str) -> list[Module]:
         topology = json.load(f)
 
         for mod in topology["modules"]:
-            module = None
-            if mod["type"] == "waste":
-                module = WasteModule(
+            
+            type = Type(mod["type"])
+
+            # If module is a reservoir type
+            if type == Type.INPUT_0 or type == Type.INPUT_1:
+                module = Reservoir(
+                    pos=Position(*mod["pos"]),
                     id=mod["id"],
-                    location=Position(*mod["pos"]),
-                    capacity=mod.get("capacity", 6),
+                    type=Type(mod["type"]),
+                    entrance=Position(*mod["entrances"][0]),
+                    exit=Position(*mod["exits"][0]),
+                    storage=Holder(capacity=mod.get("storage", 6)),
+                    width=mod.get("width", 3),
+                    height=mod.get("height", 3),
+                    pad=mod.get("pad", 1),
                 )
-            elif mod["type"].startswith("input"):
-                module = InputModule(
+                module.storage.stored_droplets = module.storage.capacity
+            elif type == Type.OUTPUT or type == Type.WASTE:
+                module = Reservoir(
+                    pos=Position(*mod["pos"]),
                     id=mod["id"],
-                    location=Position(*mod["pos"]),
-                    capacity=mod.get("capacity", 3),
-                )
-            elif mod["type"].startswith("output"):
-                module = OutputModule(
-                    id=mod["id"],
-                    location=Position(*mod["pos"]),
-                    capacity=mod.get("capacity", 3),
-                )
-            elif mod["type"] == "storage":
-                module = Storage(
-                    id=mod["id"],
-                    location=Position(*mod["pos"]),
-                    capacity=mod.get("capacity", 2),
+                    type=Type(mod["type"]),
+                    entrance=Position(*mod["entrances"][0]),
+                    exit=Position(*mod["exits"][0]),
+                    storage=Holder(capacity=mod.get("storage", 6)),
+                    width=mod.get("width", 3),
+                    height=mod.get("height", 3),
+                    pad=mod.get("pad", 1),
                 )
             else:
                 module = Module(
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
-                    type=mod["type"],
+                    type=Type(mod["type"]),
                     entrances=[Position(*entr) for entr in mod["entrances"]],
                     exits=[Position(*exit) for exit in mod["exits"]],
                     storage=Holder(capacity=mod.get("storage", 0)),
@@ -193,6 +181,7 @@ def load_modules(filename: str) -> list[Module]:
                     height=mod.get("height", 3),
                     pad=mod.get("pad", 1),
                 )
+                
             modules_list.append(module)
 
     return modules_list

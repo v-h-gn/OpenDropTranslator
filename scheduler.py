@@ -1,18 +1,20 @@
-from api.op import Op
+from api.op import InputOp, Op, StorageOp, WasteOp, OutputOp
+
+from api.util import Type
 
 def can_schedule(
     op: Op,
     tick: int,
-    modules_busy: dict[str, int],
-    available_modules: dict[str, int],
+    modules_busy: dict[Type, int],
+    available_modules: dict[Type, int],
     current_droplets: int,
     max_droplets: int,
 ) -> bool:
     """Check if an operation can be scheduled at the given tick."""
 
     # Check if parents of op which are inputs have available modules
-    dispense_parents = [p for p in op.parents if p.is_input()]
-    non_dispense_parents = [p for p in op.parents if not p.is_input()]
+    dispense_parents = [p for p in op.parents if isinstance(p, InputOp)]
+    non_dispense_parents = [p for p in op.parents if not isinstance(p, InputOp)]
 
     parent_modules_available = all(
         modules_busy.get(p.type, 0) < available_modules.get(p.type, 0)
@@ -41,7 +43,7 @@ def can_schedule(
 
 
 def list_scheduler(
-    ops: list[Op], available_modules: dict[str, int], max_droplets: int | None = None
+    ops: list[Op], available_modules: dict[Type, int], max_droplets: int | None = None
 ) -> list[Op]:
     """Schedules operations based on available modules using a simple list scheduling algorithm."""
 
@@ -62,7 +64,7 @@ def list_scheduler(
     candidate_ops = [
         op
         for op in ops
-        if op.parents and all([parent.is_input() for parent in op.parents])
+        if op.parents and all([isinstance(parent, InputOp) for parent in op.parents])
     ]
 
     tick = 0
@@ -99,10 +101,10 @@ def list_scheduler(
             # Assign module
             modules_busy[op.type] += 1
 
-            if op.is_output():
+            if isinstance(op, OutputOp):
                 current_droplets -= 1
 
-            if op.is_waste():
+            if isinstance(op, WasteOp):
                 current_droplets -= 1
 
             # Schedule operation
@@ -116,34 +118,34 @@ def list_scheduler(
 
             for parent in op.parents:
                 # If all children of parent are scheduled, add to candidate list
-                if parent.is_input():
+                if isinstance(parent, InputOp):
                     current_droplets += 1
                     parent.start_time = tick - parent.duration
                     parent.end_time = tick
                     scheduled_ops.append(parent)
                 elif parent.end_time < tick:
                     # Create storage operation, schedule it, and insert between parent and op.
-                    storage_op = Op(
+                    storage_op = StorageOp(
                         id=f"storage_{parent.id}_to_{op.id}",
-                        type="storage",
-                        start_time=parent.end_time,
-                        end_time=parent.end_time + 1,
                         duration=1,
-                        parents=[parent],
-                        children=[op],
                     )
+                    storage_op.start_time=parent.end_time
+                    storage_op.end_time=parent.end_time + 1
+                    storage_op.parents=[parent]
+                    storage_op.children=[op]
+                    
                     parent.children.remove(op)
                     parent.children.append(storage_op)
                     op.parents.remove(parent)
                     op.parents.append(storage_op)
                     scheduled_ops.append(storage_op)
                     ops.append(storage_op)
-                    modules_busy["storage"] += 1
+                    modules_busy[Type.STORAGE] += 1
 
             for child in op.children:
                 child_not_candidate = child not in candidate_ops
                 child_parents_scheduled = child.parents_scheduled(
-                    excluding=lambda p: p.is_input()
+                    excluding=lambda p: isinstance(p, InputOp)
                 )
                 if child_not_candidate and child_parents_scheduled:
                     candidate_ops.append(child)
