@@ -26,6 +26,10 @@ class Route:
         if tick < 0 or tick + 1 >= len(self.path):
             return None
         return self.path[tick + 1]
+    
+    def stall(self, tick: int) -> None:
+        """Insert a stall at the given tick"""
+        self.path.insert(tick, self.path[tick])
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Route):

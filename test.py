@@ -60,10 +60,34 @@ def test_binder():
     modules_list: list[Module] = load_modules("modules.json")
 
     placer(schedule, modules_list, list(AVAILABLE_MODULES.keys()))
+    for op in schedule:
+        print(op)
 
-    mods_by_id = {mod.id: mod for mod in modules_list}
-    print(mods_by_id)
+    print("---")   
 
+    print("Testing binder with mediumgraph.dot...")
+    ops = load_graph("example_protocols/mediumgraph.dot")
+    schedule = scheduler(ops, AVAILABLE_MODULES)
+    for op in schedule:
+        print(op)
+    print("Binding modules...")
+    modules_list: list[Module] = load_modules("modules.json")
+
+    placer(schedule, modules_list, list(AVAILABLE_MODULES.keys()))
+
+    for op in schedule:
+        print(op)
+    print("---")
+
+
+    print("Testing binder with largegraph.dot...")
+    ops = load_graph("example_protocols/largegraph.dot")
+    schedule = scheduler(ops, AVAILABLE_MODULES)
+    for op in schedule:
+        print(op)
+    print("Binding modules...")
+    modules_list: list[Module] = load_modules("modules.json")
+    placer(schedule, modules_list, list(AVAILABLE_MODULES.keys()))
     for op in schedule:
         print(op)
     print("--- ENDING BINDER TEST ---")
@@ -71,10 +95,10 @@ def test_binder():
 
 def test_router():
 
-    print("Testing router with smallgraph.dot...")
-    ops = load_graph("example_protocols/smallgraph.dot")
+    print("Testing router with largegraph.dot...")
+    ops = load_graph("example_protocols/largegraph.dot")
     schedule = scheduler(ops, AVAILABLE_MODULES)
-    
+
     print("Binding modules...")
     modules_list: list[Module] = load_modules("modules.json")
 
@@ -87,9 +111,9 @@ def test_router():
     print("Routing droplets...")
 
     routes = router(schedule, mods_by_id)
-    for op_id, route in routes:
-        print(f"Route for {op_id}:")
-        print_route(route)
+    for op1, op2, route in routes:
+        print(f"Route from {op1.id} of type {op1.type} to {op2.id} of type {op2.type}:")
+        print_route(route, modules=modules_list)
     print("--- ENDING ROUTER TEST ---")
 
 if __name__ == "__main__":

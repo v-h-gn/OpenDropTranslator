@@ -17,14 +17,10 @@ class Holder:  # STORAGE CAPACITY FOR MODULE
 
     def store(self) -> None:
         """Store a droplet if there is space."""
-        if not self.has_space():
-            raise RuntimeError("No storage space available.")
         self.stored_droplets += 1
 
     def retrieve(self) -> None:
         """Retrieve a droplet if there are any stored."""
-        if self.stored_droplets <= 0:
-            raise RuntimeError("No droplets to retrieve.")
         self.stored_droplets -= 1
 
 
@@ -74,12 +70,16 @@ class Module:
 
     def store(self) -> Position:
         """Store a droplet in the module's storage. Returns entrance position."""
+        if self.full():
+            raise RuntimeError(f"Module {self.id} storage is full.")
         index = self.storage.stored_droplets
         self.storage.store()
         return self.entrances[index]
 
     def retrieve(self) -> Position:
         """Retrieve a droplet from the module's storage. Returns exit position."""
+        if self.empty():
+            raise RuntimeError(f"Module {self.id} storage is empty.")
         self.storage.retrieve()
         return self.exits[self.storage.stored_droplets]
 
@@ -108,7 +108,7 @@ class Reservoir(Module):
         storage: Holder,
         width: int = 3,
         height: int = 3,
-        pad: int = 1,
+        pad: int = 0,
     ):
         super().__init__(
             pos=pos,
@@ -129,8 +129,23 @@ class Reservoir(Module):
     
     def retrieve(self) -> Position:
         """Retrieve a droplet from the reservoir module's storage. Returns exit position."""
+        if self.empty():
+            print(f"Warning: Retrieving from empty reservoir {self.id}.")
+            print("Proceeding anyway, make sure to REFILL.")
         self.storage.retrieve()
         return self.exits[0]
+
+class InputReservoir(Reservoir):
+    """Represents an input reservoir module. Same as Reservoir except entrance is invalid."""
+
+    def store(self) -> Position:
+        raise RuntimeError("Cannot store droplets in an input reservoir.")
+
+class OutputReservoir(Reservoir):
+    """Represents an output reservoir module."""
+
+    def retrieve(self) -> Position:
+        raise RuntimeError("Cannot retrieve droplets from an output reservoir.")
 
 def load_modules(filename: str) -> list[Module]:
     """Load module definitions from a JSON file."""
@@ -154,7 +169,7 @@ def load_modules(filename: str) -> list[Module]:
                     storage=Holder(capacity=mod.get("storage", 6)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
-                    pad=mod.get("pad", 1),
+                    pad=mod.get("pad", 0),
                 )
                 module.storage.stored_droplets = module.storage.capacity
             elif type == Type.OUTPUT or type == Type.WASTE:
@@ -162,12 +177,12 @@ def load_modules(filename: str) -> list[Module]:
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
-                    entrance=Position(*mod["entrances"][0]),
+                    entrance=,
                     exit=Position(*mod["exits"][0]),
                     storage=Holder(capacity=mod.get("storage", 6)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
-                    pad=mod.get("pad", 1),
+                    pad=mod.get("pad", 0),
                 )
             else:
                 module = Module(
@@ -176,7 +191,7 @@ def load_modules(filename: str) -> list[Module]:
                     type=Type(mod["type"]),
                     entrances=[Position(*entr) for entr in mod["entrances"]],
                     exits=[Position(*exit) for exit in mod["exits"]],
-                    storage=Holder(capacity=mod.get("storage", 0)),
+                    storage=Holder(capacity=mod.get("storage", 1)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
                     pad=mod.get("pad", 1),

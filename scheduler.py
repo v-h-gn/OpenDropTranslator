@@ -98,7 +98,18 @@ def list_scheduler(
         ]
 
         for op in scheduleable_ops:
-            # Assign module
+
+            if not can_schedule(
+                op,
+                tick,
+                modules_busy,
+                available_modules,
+                current_droplets,
+                max_droplets,
+            ):
+                continue
+
+                # Allocate module to operation
             modules_busy[op.type] += 1
 
             if isinstance(op, OutputOp):
