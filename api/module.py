@@ -1,6 +1,6 @@
 import json
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from api.util import Position, Type
 
 
@@ -44,13 +44,16 @@ class Module:
     pos: Position
     id: str
     type: Type
-    entrances: list[Position]
-    exits: list[Position]
+    ports: list[Position]
     storage: Holder
     end_time: int = 0
     width: int = 3
     height: int = 3
     pad: int = 1
+    used_ports: dict[Position, bool] = field(default_factory=dict[Position, bool])
+    
+    def __post_init__(self) -> None:
+        self.used_ports = {port: False for port in self.ports}
 
     def available(self, tick: int) -> bool:
         """Check if the module is free at the given tick."""
@@ -68,20 +71,26 @@ class Module:
         """Check if the module has storage space available."""
         return self.storage.has_space()
 
-    def store(self) -> Position:
-        """Store a droplet in the module's storage. Returns entrance position."""
-        if self.full():
-            raise RuntimeError(f"Module {self.id} storage is full.")
-        index = self.storage.stored_droplets
-        self.storage.store()
-        return self.entrances[index]
+    def get_nearest_ports(self, other_mod: "Module") -> tuple[Position, Position]:
+        """Get the closest unused entrance/exit pairs for the given module."""
+        unused_self_ports = self.get_unused_ports()
+        unused_other_ports = other_mod.get_unused_ports()
 
-    def retrieve(self) -> Position:
-        """Retrieve a droplet from the module's storage. Returns exit position."""
-        if self.empty():
-            raise RuntimeError(f"Module {self.id} storage is empty.")
-        self.storage.retrieve()
-        return self.exits[self.storage.stored_droplets]
+        pairs = [(p1, p2) for p1 in unused_self_ports for p2 in unused_other_ports]
+ 
+        return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
+
+    def get_unused_ports(self) -> list[Position]:
+        """Get a list of unused ports for the module."""
+        return [p for p in self.ports if not self.used_ports[p]]
+    
+    def reset_ports(self) -> None:
+        """Reset all ports to unused."""
+        for port in self.used_ports:
+            self.used_ports[port] = False
+
+    def __repr__(self) -> str:
+        return f"Module: {self.id}, Type: {self.type}"
 
     @staticmethod
     def mods_by_type(modules: list["Module"]) -> dict[Type, list["Module"]]:
@@ -92,60 +101,6 @@ class Module:
                 modules_by_type[mod.type] = []
             modules_by_type[mod.type].append(mod)
         return modules_by_type
-
-    def __repr__(self) -> str:
-        return f"Module: {self.id}, Type: {self.type}"
-
-class Reservoir(Module):
-    """Represents a reservoir module."""
-    def __init__(
-        self,
-        pos: Position,
-        id: str,
-        type: Type,
-        entrance: Position,
-        exit: Position,
-        storage: Holder,
-        width: int = 3,
-        height: int = 3,
-        pad: int = 0,
-    ):
-        super().__init__(
-            pos=pos,
-            id=id,
-            type=type,
-            entrances=[entrance],
-            exits=[exit],
-            storage=storage,
-            width=width,
-            height=height,
-            pad=pad,
-        )
-    
-    def store(self) -> Position:
-        """Store a droplet in the reservoir module's storage. Returns entrance position."""
-        self.storage.store()
-        return self.entrances[0]
-    
-    def retrieve(self) -> Position:
-        """Retrieve a droplet from the reservoir module's storage. Returns exit position."""
-        if self.empty():
-            print(f"Warning: Retrieving from empty reservoir {self.id}.")
-            print("Proceeding anyway, make sure to REFILL.")
-        self.storage.retrieve()
-        return self.exits[0]
-
-class InputReservoir(Reservoir):
-    """Represents an input reservoir module. Same as Reservoir except entrance is invalid."""
-
-    def store(self) -> Position:
-        raise RuntimeError("Cannot store droplets in an input reservoir.")
-
-class OutputReservoir(Reservoir):
-    """Represents an output reservoir module."""
-
-    def retrieve(self) -> Position:
-        raise RuntimeError("Cannot retrieve droplets from an output reservoir.")
 
 def load_modules(filename: str) -> list[Module]:
     """Load module definitions from a JSON file."""
@@ -160,12 +115,11 @@ def load_modules(filename: str) -> list[Module]:
 
             # If module is a reservoir type
             if type == Type.INPUT_0 or type == Type.INPUT_1:
-                module = Reservoir(
+                module = Module(
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
-                    entrance=Position(*mod["entrances"][0]),
-                    exit=Position(*mod["exits"][0]),
+                    ports=[Position(*port) for port in mod["ports"]],
                     storage=Holder(capacity=mod.get("storage", 6)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
@@ -173,12 +127,11 @@ def load_modules(filename: str) -> list[Module]:
                 )
                 module.storage.stored_droplets = module.storage.capacity
             elif type == Type.OUTPUT or type == Type.WASTE:
-                module = Reservoir(
+                module = Module(
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
-                    entrance=,
-                    exit=Position(*mod["exits"][0]),
+                    ports=[Position(*port) for port in mod["ports"]],
                     storage=Holder(capacity=mod.get("storage", 6)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
@@ -189,8 +142,7 @@ def load_modules(filename: str) -> list[Module]:
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
-                    entrances=[Position(*entr) for entr in mod["entrances"]],
-                    exits=[Position(*exit) for exit in mod["exits"]],
+                    ports=[Position(*port) for port in mod["ports"]],
                     storage=Holder(capacity=mod.get("storage", 1)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),

@@ -2,6 +2,7 @@ import argparse
 
 from api.module import Module, load_modules
 from api.op import load_ops_from_dot as load_graph
+from api.util import Type
 
 from scheduler import list_scheduler as schedule
 from placer import left_edge_bind_modules as placer
@@ -28,9 +29,9 @@ parser.add_argument(
 parser.add_argument(
     "--max_droplets", type=int, help="Maximum number of droplets to use."
 )
-parser.add_argument("--width", type=int, default=6, help="Width of the OpenDrop board.")
+parser.add_argument("--height", type=int, default=8, help="Height of the OpenDrop board.")
 parser.add_argument(
-    "--height", type=int, default=14, help="Height of the OpenDrop board."
+    "--width", type=int, default=16, help="Width of the OpenDrop board."
 )
 parser.add_argument(
     "--heaters", type=int, default=3, help="Number of heating modules available."
@@ -54,10 +55,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-BOARD_DIMENSIONS = (args.height, args.width)
-
-# WASTE LOCATION ON RIGHT SIDE OF CHIP
-WASTE_RESERVOIR = (args.height - 1, 2)
+BOARD_DIMENSIONS = (args.width, args.height)
 
 num_inputs: int = args.inputs
 
@@ -74,16 +72,25 @@ outputs: int = int(args.outputs)
 storages: int = int(args.storages)
 wastes: int = int(args.wastes)
 
-AVAILABLE_MODULES: dict[str, int] = {
-    "mix": mixers,
-    "input-zero": num_inputs,
-    "input-one": num_inputs,
-    "output": outputs,
-    "storage": storages,
-    "waste": wastes,
+AVAILABLE_MODULES: dict[Type, int] = {
+    Type.MIX: mixers,
+    Type.INPUT_0: num_inputs,
+    Type.INPUT_1: num_inputs,
+    Type.OUTPUT: outputs,
+    Type.STORAGE: storages,
+    Type.WASTE: wastes,
 }
 scheduled_ops = schedule(load_graph(args.input_dot), AVAILABLE_MODULES, max_droplets)
 
 placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 
 routes = router(scheduled_ops, modules_by_id)
+
+for op, parent, route in routes:
+    print(f"Route from {parent} to {op}:")
+    route.print_route(
+        board_size=BOARD_DIMENSIONS,
+        no_go_cells=set(),
+        modules=modules_list,
+    )
+    print("\n")

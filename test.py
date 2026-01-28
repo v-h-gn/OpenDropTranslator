@@ -5,7 +5,7 @@ from api.util import Position, Type
 
 from scheduler import list_scheduler as scheduler
 from placer import left_edge_bind_modules as placer
-from router import route as router, print_route
+from router import route as router
 
 AVAILABLE_MODULES = {
         Type.MIX: 1,
@@ -113,7 +113,7 @@ def test_router():
     routes = router(schedule, mods_by_id)
     for op1, op2, route in routes:
         print(f"Route from {op1.id} of type {op1.type} to {op2.id} of type {op2.type}:")
-        print_route(route, modules=modules_list)
+        route.print_route(modules=modules_list)
     print("--- ENDING ROUTER TEST ---")
 
 if __name__ == "__main__":

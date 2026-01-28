@@ -1,62 +1,13 @@
 from collections import deque
-import copy
 
 from api.op import Op
 from api.module import Module
-from api.util import Position, Type
+from api.util import Position
 from api.route import Route
 
+import copy
 
 irv = Position.irv
-
-def print_route(route: Route, board_size: tuple[int, int] = (16, 8), no_go_cells: set[Position] = set(), modules: list[Module] = list()) -> None:
-    """Prints a visual representation of the route on the board."""
-    
-    board = [["." for _ in range(board_size[1])] for _ in range(board_size[0])]
-
-    for cell in no_go_cells:
-        if cell.valid(board_size):
-            board[cell.x][cell.y] = "#"
-
-    for step in route.path:
-        if step.valid(board_size):
-            board[step.x][step.y] = "o"
-        if step == route.src and step.valid(board_size):
-            board[step.x][step.y] = "S"
-        if step == route.dst and step.valid(board_size):
-            board[step.x][step.y] = "D"
-
-    for mod in modules:
-        for x in range(mod.pos.x, mod.pos.x + mod.width):
-            for y in range(mod.pos.y, mod.pos.y + mod.height):
-                if Position(x, y).valid(board_size):
-
-                    if mod.type == Type.INPUT_0 or mod.type == Type.INPUT_1:
-                        board[x][y] = "I"
-                    elif mod.type == Type.OUTPUT:
-                        board[x][y] = "O"
-                    elif mod.type == Type.WASTE:
-                        board[x][y] = "W"
-                    elif mod.type == Type.MIX:
-                        board[x][y] = "M"
-                    elif mod.type == Type.STORAGE:
-                        board[x][y] = "S"
-                    elif mod.type == Type.HEAT:
-                        board[x][y] = "H"
-                    elif mod.type == Type.DETECT:
-                        board[x][y] = "D"
-
-                    if Position(x, y) in mod.entrances:
-                        board[x][y] = "Մ"
-                    if Position(x, y) in mod.exits:
-                        board[x][y] = "Ե"
-
-    # take transpose of board
-    board_t = list(zip(*board))
-
-    for row in board_t:
-        print(" ".join(row))
-    print()
 
 
 def path_find(
@@ -65,7 +16,7 @@ def path_find(
     no_go_cells: set[Position] = set(),
     board_size: tuple[int, int] = (16, 8),
 ) -> Route:
-    """Finds a route from src to dst using A* algorithm."""
+    """Finds a route from src to dst using Lee's algorithm."""
     init_route = Route(src, src, [src])
     q = deque([init_route])
     visited = {src}
@@ -79,7 +30,6 @@ def path_find(
                 visited.add(neighbor)
                 new_route = Route(route.src, neighbor, copy.deepcopy(route.path) + [neighbor])
                 q.append(new_route)
-    print_route(route, board_size, no_go_cells)
     raise RuntimeError(f"No route found from {src} to {dst}")
 
 def get_parent_occupied_cells(op: Op, occupied_cells: dict[Op, set[Position]], mods: dict[str, Module]) -> set[Position]:
@@ -98,30 +48,18 @@ def get_parent_occupied_cells(op: Op, occupied_cells: dict[Op, set[Position]], m
 def get_no_go_cells(ops: list[Op], mods: dict[str, Module]) -> dict[Op, set[Position]]:
     """
     Get all no-go cells on the board at a given tick for the provided operations and modules.
-
-    Let A be a droplet being routed from module M1 to M2.
-    The no-go cells for A include all cells occupied by other modules and the internal area of M1 (excluding entrances/exits).
     """
-
     no_go_cells_by_op: dict[Op, set[Position]] = {}
     for op in ops:
-        mod = mods[op.module]
         no_go_cells = set[Position]()
         # Add all module occupied cells
         for other_mod in mods.values():
             for x in range(other_mod.pos.x - other_mod.pad, other_mod.pos.x + other_mod.width + other_mod.pad):
                 for y in range(other_mod.pos.y - other_mod.pad, other_mod.pos.y + other_mod.height + other_mod.pad):
                     no_go_cells.add(Position(x, y))
-        # Remove entrances of the current module
-        for entrance in mod.entrances:
-            no_go_cells.discard(entrance)
-        for exit in mod.exits:
-            no_go_cells.discard(exit)
-        # Remove internal area of the current module
-        for x in range(mod.pos.x, mod.pos.x + mod.width):
-            for y in range(mod.pos.y, mod.pos.y + mod.height):
-                no_go_cells.discard(Position(x, y))
         no_go_cells_by_op[op] = no_go_cells
+
+        
     return no_go_cells_by_op
 
 def get_routes(ops: list[Op], mods: dict[str, Module], tick: int, routed_ops: set[Op]) -> list[tuple[Op, Op, Route]]:
@@ -139,37 +77,45 @@ def get_routes(ops: list[Op], mods: dict[str, Module], tick: int, routed_ops: se
     for cells in occupied_cells.values():
         occupied.update(cells)
 
-
     # Print summary before routing
     print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
     for op in active_ops:
         print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
-        print(f"Parent Modules: {[parent.module for parent in op.parents]}")
-        print_route(Route(Position(0,0), Position(0,0), []), no_go_cells=occupied_cells[op], modules=list(active_mods.values()))
 
     # Find routes for each active operation
     for op in active_ops:
         mod = mods[op.module]
-        mod.storage.stored_droplets = 0  # Reset storage for routing purposes
+        mod.reset_ports()
+
+        # If already routed, skip
+        if op in routed_ops:
+            print(f"Skipping routing for {op.id} as it has already been routed.")
+            continue
+
+        # Route from each parent to this operation
         for parent in op.parents:
             parent_mod = mods[parent.module]
 
+            # If parent and child are on the same module, skip routing
             if parent_mod == mod:
                 print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
-            src = parent_mod.retrieve()
-            dst = mod.store()
+            src, dst = parent_mod.get_nearest_ports(mod)
+
+            parent_mod.used_ports[src] = True
+            mod.used_ports[dst] = True
+            # Remove src and dst from occupied cells to allow routing to/from these points
             try:
                 route = path_find(
                     src=src,
                     dst=dst,
-                    no_go_cells=occupied_cells[op],
+                    no_go_cells=occupied_cells[op] - {src} - {dst},
                     board_size=(16, 8),
                 )
                 routes.append((op, parent, route))
                 print(f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}")
-                print_route(route, no_go_cells=occupied_cells[op], modules=list(active_mods.values()))
+                routed_ops.add(op)
             except RuntimeError as e:
                 print(f"Failed to route from {parent.id} to {op.id}: {e}")
                 print(f"Parent module: {parent_mod} at {src}, Child module: {mod} at {dst}")
