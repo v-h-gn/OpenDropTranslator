@@ -1,8 +1,9 @@
 import argparse
+import numpy as np
 
 from api.module import Module, load_modules
-from api.op import load_ops_from_dot as load_graph
-from api.util import Type
+from api.op import Op, load_ops_from_dot as load_graph
+from api.util import Type, Position, get_dispense_frames
 
 from scheduler import list_scheduler as schedule
 from placer import left_edge_bind_modules as placer
@@ -86,11 +87,64 @@ placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 
 routes = router(scheduled_ops, modules_by_id)
 
-for op, parent, route in routes:
-    print(f"Route from {parent} to {op}:")
-    route.print_route(
-        board_size=BOARD_DIMENSIONS,
-        no_go_cells=set(),
-        modules=modules_list,
-    )
-    print("\n")
+encoded_instructions = set[Op]()
+
+protocol = dict[int, set[Position]]()
+
+# Generate frame-based JSON protocol
+
+reservoir_ranges = {
+        Position(1,1): (0, 6),
+        Position(14,1): (6, 12),
+        Position(1,6): (12, 18),
+        Position(14,6): (18, 24),
+    }
+
+for tick in range(max(op.end_time for op in scheduled_ops) + 1):
+    
+    active_ops = [op for op in scheduled_ops if op.start_time == tick and op not in encoded_instructions]
+
+    for op in active_ops:
+        
+        module = modules_by_id[op.module]
+
+        if module.type in (Type.INPUT_0, Type.INPUT_1):
+            dispense_frames = get_dispense_frames(module.pos, reservoir_ranges)
+            
+            # convert binary strings to positions
+            for frame in dispense_frames:
+                frame_num = int(frame["frame"])
+                positions = set[Position]()
+                for y in range(args.height):
+                    row = str(frame[f"y{y}"])
+                    for x in range(args.width):
+                        if row[x] == "1":
+                            positions.add(Position(x, y))
+                protocol_tick = tick + frame_num - 1
+                if protocol_tick not in protocol:
+                    protocol[protocol_tick] = set()
+                protocol[protocol_tick].update(positions)
+                encoded_instructions.add(op)
+        elif module.type == Type.MIX:
+            # For mixing, just activate the module area for the duration
+            module_cells = [Position(x, y) for x in range(module.pos.x, module.pos.x + module.width) for y in range(module.pos.y, module.pos.y + module.height)]
+            
+            module_indices = np.array([[0, 1], [2, 3]], dtype=int)
+            for t in range(op.start_time, op.end_time):
+                if t not in protocol:
+                    protocol[t] = set()
+                # Activate cells in clockwise fashion around perimeter of module area
+                
+                protocol[t].add(module_cells[int(module_indices[0][0])])
+
+                module_indices = np.rot90(module_indices, k=1, axes=(0,1))
+            
+            
+            # After mixing, need to split and move droplets to exits
+            
+
+            encoded_instructions.add(op)
+        
+        elif module.type in (Type.OUTPUT, Type.WASTE):
+            pass
+
