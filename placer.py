@@ -22,12 +22,16 @@ def left_edge_bind_modules(
         if (module_type in bindable_modules):
             op_list = ops_by_type.get(module_type, [])
             # For each module of this type, while there are unbound operations, bind them
+
             for module in mods:
-                while op_list:
-                    op = op_list[0]
-                    if op.start_time >= module.end_time:
-                        op.module = module.id
-                        module.end_time = op.end_time
-                        op.bound = True
-                        op_list.pop(0)
-    
+                removes = set[Op]()
+                for i in range(len(op_list)):
+                    if op_list[i].start_time >= module.end_time:
+                        op_list[i].module = module.id
+                        module.end_time = op_list[i].end_time
+                        op_list[i].bound = True
+                        removes.add(op_list[i])
+                for op in removes:
+                    op_list.remove(op)
+                module.reset_ports()
+

@@ -57,8 +57,14 @@ def get_no_go_cells(ops: list[Op], mods: dict[str, Module]) -> dict[Op, set[Posi
             for x in range(other_mod.pos.x - other_mod.pad, other_mod.pos.x + other_mod.width + other_mod.pad):
                 for y in range(other_mod.pos.y - other_mod.pad, other_mod.pos.y + other_mod.height + other_mod.pad):
                     no_go_cells.add(Position(x, y))
-        no_go_cells_by_op[op] = no_go_cells
+        own_mod = mods[op.module]
+        for x in range(own_mod.pos.x - own_mod.pad, own_mod.pos.x + own_mod.width + own_mod.pad):
+            for y in range(own_mod.pos.y - own_mod.pad, own_mod.pos.y + own_mod.height + own_mod.pad):
+                pos = Position(x, y)
+                if not own_mod.is_internal(pos):
+                    no_go_cells.remove(pos)
 
+        no_go_cells_by_op[op] = no_go_cells
         
     return no_go_cells_by_op
 
@@ -69,6 +75,7 @@ def get_routes(ops: list[Op], mods: dict[str, Module], tick: int, routed_ops: se
 
     # Identify operations active at the current tick
     active_ops = [op for op in ops if op.start_time <= tick < op.end_time and op not in routed_ops]
+    print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
     active_mods = {op.module: mods[op.module] for op in active_ops}
     occupied_cells: dict[Op, set[Position]] = get_no_go_cells(active_ops, active_mods)
 
@@ -85,8 +92,7 @@ def get_routes(ops: list[Op], mods: dict[str, Module], tick: int, routed_ops: se
     # Find routes for each active operation
     for op in active_ops:
         mod = mods[op.module]
-        mod.reset_ports()
-
+        
         # If already routed, skip
         if op in routed_ops:
             print(f"Skipping routing for {op.id} as it has already been routed.")
@@ -101,10 +107,10 @@ def get_routes(ops: list[Op], mods: dict[str, Module], tick: int, routed_ops: se
                 print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
-            src, dst = parent_mod.get_nearest_ports(mod)
+            src, dst = parent_mod.get_nearest_ports(tick, mod)
 
-            parent_mod.used_ports[src] = True
-            mod.used_ports[dst] = True
+            parent_mod.used_ports[src][tick] = True
+            mod.used_ports[dst][tick] = True
             # Remove src and dst from occupied cells to allow routing to/from these points
             try:
                 route = path_find(

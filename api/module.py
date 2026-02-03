@@ -50,11 +50,8 @@ class Module:
     width: int = 3
     height: int = 3
     pad: int = 1
-    used_ports: dict[Position, bool] = field(default_factory=dict[Position, bool])
+    used_ports: dict[Position, list[bool]] = field(default_factory=dict[Position, list[bool]])
     
-    def __post_init__(self) -> None:
-        self.used_ports = {port: False for port in self.ports}
-
     def available(self, tick: int) -> bool:
         """Check if the module is free at the given tick."""
         return self.end_time <= tick
@@ -70,24 +67,28 @@ class Module:
     def has_space(self) -> bool:
         """Check if the module has storage space available."""
         return self.storage.has_space()
+    
+    def is_internal(self, pos: Position) -> bool:
+        """Check if a position is within the module's area."""
+        return (self.pos.x <= pos.x < self.pos.x + self.width) and (self.pos.y <= pos.y < self.pos.y + self.height)
 
-    def get_nearest_ports(self, other_mod: "Module") -> tuple[Position, Position]:
+    def get_nearest_ports(self, tick: int, other_mod: "Module") -> tuple[Position, Position]:
         """Get the closest unused entrance/exit pairs for the given module."""
-        unused_self_ports = self.get_unused_ports()
-        unused_other_ports = other_mod.get_unused_ports()
+        unused_self_ports = self.get_unused_ports(tick)
+        unused_other_ports = other_mod.get_unused_ports(tick)
 
         pairs = [(p1, p2) for p1 in unused_self_ports for p2 in unused_other_ports]
  
         return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
 
-    def get_unused_ports(self) -> list[Position]:
-        """Get a list of unused ports for the module."""
-        return [p for p in self.ports if not self.used_ports[p]]
+    def get_unused_ports(self, tick: int) -> list[Position]:
+        """Get a list of unused ports for the module at the given tick."""
+        return [p for p in self.ports if not self.used_ports[p][tick]]
     
     def reset_ports(self) -> None:
         """Reset all ports to unused."""
-        for port in self.used_ports:
-            self.used_ports[port] = False
+        for port in self.ports:
+            self.used_ports[port] = [False] * (self.end_time + 1)
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"

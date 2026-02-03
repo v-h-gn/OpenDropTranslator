@@ -77,7 +77,7 @@ def convert_to_protocol(positions: set[Position], board_size: tuple[int, int] = 
     return rows
 
 
-def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], dispense_file: str = "dispense.json") -> list[dict[str, str | int]]:
+def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "dispense.json") -> list[dict[str, str | int]]:
     """
     Load dispense animation frames for a specific reservoir from dispense.json.
     
@@ -100,7 +100,31 @@ def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tu
         raise ValueError(f"Invalid reservoir: {reservoir}. Must be one of {list(reservoir_ranges.keys())}")
     
     # Load dispense.json
-    with open(dispense_file, "r") as f:
+    with open(animation_file, "r") as f:
+        all_frames = json.load(f)
+    
+    # Extract the frames for this reservoir
+    start_idx, end_idx = reservoir_ranges[reservoir]
+    return all_frames[start_idx:end_idx]
+
+def get_output_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "animation.json") -> list[dict[str, str | int]]:
+    """
+    Load output animation frames for a specific reservoir from output.json.
+    
+    Args:
+        reservoir (Position): Reservoir position - one of Position(1,1), Position(14,1), Position(1,6), Position(14,6)
+        animation_file (str): Path to the animation.json file
+    Returns:
+        list[dict]: List of 6 frame dictionaries with y0-y7 electrode states and frame numbers.
+    """
+
+    import json
+    
+    if reservoir not in reservoir_ranges:
+        raise ValueError(f"Invalid reservoir: {reservoir}. Must be one of {list(reservoir_ranges.keys())}")
+    
+    # Load output.json
+    with open(animation_file, "r") as f:
         all_frames = json.load(f)
     
     # Extract the frames for this reservoir

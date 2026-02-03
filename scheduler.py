@@ -138,10 +138,10 @@ def list_scheduler(
                     # Create storage operation, schedule it, and insert between parent and op.
                     storage_op = StorageOp(
                         id=f"storage_{parent.id}_to_{op.id}",
-                        duration=1,
+                        duration=op.start_time - parent.end_time,
                     )
                     storage_op.start_time=parent.end_time
-                    storage_op.end_time=parent.end_time + 1
+                    storage_op.end_time=op.start_time
                     storage_op.parents=[parent]
                     storage_op.children=[op]
                     

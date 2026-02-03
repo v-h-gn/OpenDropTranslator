@@ -1,11 +1,12 @@
 from api.module import Module, load_modules
 from api.op import load_ops_from_dot as load_graph
 from api.util import Position, Type
+from api.route import Route
 
 
 from scheduler import list_scheduler as scheduler
 from placer import left_edge_bind_modules as placer
-from router import route as router
+from router import get_no_go_cells, route as router
 
 AVAILABLE_MODULES = {
         Type.MIX: 1,
@@ -101,8 +102,8 @@ def test_router():
 
     print("Binding modules...")
     modules_list: list[Module] = load_modules("modules.json")
-
-    placer(schedule, modules_list, list(AVAILABLE_MODULES.keys()))
+    bindable_modules = list(AVAILABLE_MODULES.keys())
+    placer(schedule, modules_list, bindable_modules)
 
     mods_by_id = {mod.id: mod for mod in modules_list}
     print(mods_by_id)
@@ -112,8 +113,12 @@ def test_router():
 
     routes = router(schedule, mods_by_id)
     for op1, op2, route in routes:
-        print(f"Route from {op1.id} of type {op1.type} to {op2.id} of type {op2.type}:")
+        print(f"Route from {op2.id} of type {op2.type} to {op1.id} of type {op1.type}:")
+        no_go_cells_by_op = get_no_go_cells([op1, op2], mods_by_id)
+        no_go_cells = no_go_cells_by_op[op1].intersection(no_go_cells_by_op[op2])
         route.print_route(modules=modules_list)
+        default_route = Route(src=Position(-1, -1), dst=Position(-1, -1), path=[])
+        default_route.print_route(modules=modules_list, no_go_cells=no_go_cells)
     print("--- ENDING ROUTER TEST ---")
 
 if __name__ == "__main__":

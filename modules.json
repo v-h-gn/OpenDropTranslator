@@ -41,20 +41,20 @@
             "pad": 1
         },
         {
-            "pos": [9, 4],
+            "pos": [10, 7],
             "id": "storage-0",
             "type": "storage",
-            "ports": [[9, 3], [9, 5], [8, 4], [10, 4]],
+            "ports": [[10, 6], [9,7]],
             "storage": 1,
             "width": 1,
             "height": 1,
             "pad": 1
         },
         {
-            "pos": [11, 4],
+            "pos": [5, 7],
             "id": "storage-1",
             "type": "storage",
-            "ports": [[11, 3], [11, 5], [10, 4], [12, 4]],
+            "ports": [[5, 6], [6,7]],
             "storage": 1,
             "width": 1,
             "height": 1,
