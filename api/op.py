@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 from typing import Callable
 from networkx.drawing.nx_pydot import read_dot
 
-from api.util import Type
+from api.util import Position, Type
+
+import json
 
 
 @dataclass(eq=True)
@@ -73,6 +75,12 @@ class Op:  # OPERATION IN SCHEDULE
 
     def __hash__(self) -> int:
         return hash(self.id)
+    
+    def animation(self, anchor: Position, tick: int) -> set[Position]:
+        """Generate the set of positions occupied by the droplet during this operation at a given tick."""
+        if self.start_time <= tick < self.end_time:
+            return {anchor}
+        return set()
 
     @staticmethod
     def ops_by_type(ops: list["Op"]) -> dict[Type, list["Op"]]:
@@ -89,6 +97,9 @@ class StorageOp(Op):
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.STORAGE, duration=duration)
 
+    def animation(self, anchor: Position, tick: int) -> set[Position]:
+        return {anchor}
+
 class ReservoirOp(Op):
     """Represents a reservoir operation."""
     def __init__(self, id: str, type: Type, duration: int):
@@ -98,6 +109,15 @@ class InputOp(ReservoirOp):
     """Represents an input operation."""
     def __init__(self, id: str, input_type: Type, duration: int):
         super().__init__(id=id, type=input_type, duration=duration)
+
+    def animation(self, anchor: Position, tick: int) -> set[Position]:
+        """Translates from dispense.json format to set of positions."""
+        json_file = "dispense.json"
+        with open(json_file, "r") as f:
+            dispense_data = json.load(f)
+            # TODO: Process dispense_data and return appropriate positions
+            return {anchor}
+            
 
 class OutputOp(ReservoirOp):
     """Represents an output operation."""

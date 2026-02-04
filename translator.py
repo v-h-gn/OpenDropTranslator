@@ -91,7 +91,7 @@ encoded_instructions = set[Op]()
 
 protocol = dict[int, set[Position]]()
 
-# Generate frame-based JSON protocol
+# Generate frame-based JSON protocol for in-module operations
 
 reservoir_ranges = {
         Position(1,1): (0, 6),
@@ -144,7 +144,43 @@ for tick in range(max(op.end_time for op in scheduled_ops) + 1):
             
 
             encoded_instructions.add(op)
-        
         elif module.type in (Type.OUTPUT, Type.WASTE):
             pass
+        elif module.type == Type.STORAGE:
+            pass
 
+# Add routes in between module end and start times
+for child, parent, route in routes:
+    start_time = parent.end_time
+    for tick in range(len(route.path)):
+        protocol[tick].update(route.path[tick - max(child.start_time, parent.end_time)])
+
+# Write protocol to output json
+# Format: 
+# [{
+#  "y0": "111111111111111100",
+#  "y1": "111111111111111100",
+#  "y2": "111111111111111100",
+#  "y3": "111111111111111100",
+#  "y4": "111111111111111100",
+#  "y5": "111111111111111100",
+#  "y6": "111111111111111100",
+#  "y7": "111111111111111100",
+#  "frame": 1
+# }]
+
+with open(args.output_instructions, "w") as f:
+    protocol_frames = list[dict[str, str]]()
+    for tick in range(max(protocol.keys()) + 1):
+        frame_dict: dict[str, str] = {}
+        for y in range(args.height):
+            row = ["0"] * args.width
+            if tick in protocol:
+                for pos in protocol[tick]:
+                    if pos.y == y:
+                        row[pos.x] = "1"
+            frame_dict[f"y{y}"] = "".join(row)
+        frame_dict["frame"] = tick + 1 # type: ignore
+        protocol_frames.append(frame_dict)
+    import json
+    json.dump(protocol_frames, f, indent=4)
