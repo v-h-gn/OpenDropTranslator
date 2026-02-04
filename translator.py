@@ -1,5 +1,4 @@
 import argparse
-import numpy as np
 
 from api.module import Module, load_modules
 from api.op import Op, load_ops_from_dot as load_graph
@@ -30,7 +29,9 @@ parser.add_argument(
 parser.add_argument(
     "--max_droplets", type=int, help="Maximum number of droplets to use."
 )
-parser.add_argument("--height", type=int, default=8, help="Height of the OpenDrop board.")
+parser.add_argument(
+    "--height", type=int, default=8, help="Height of the OpenDrop board."
+)
 parser.add_argument(
     "--width", type=int, default=16, help="Width of the OpenDrop board."
 )
@@ -87,100 +88,114 @@ placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 
 routes = router(scheduled_ops, modules_by_id)
 
-encoded_instructions = set[Op]()
-
-protocol = dict[int, set[Position]]()
-
 # Generate frame-based JSON protocol for in-module operations
 
 reservoir_ranges = {
-        Position(1,1): (0, 6),
-        Position(14,1): (6, 12),
-        Position(1,6): (12, 18),
-        Position(14,6): (18, 24),
-    }
+    Position(1, 1): (0, 6),
+    Position(14, 1): (6, 12),
+    Position(1, 6): (12, 18),
+    Position(14, 6): (18, 24),
+}
 
-for tick in range(max(op.end_time for op in scheduled_ops) + 1):
-    
-    active_ops = [op for op in scheduled_ops if op.start_time == tick and op not in encoded_instructions]
+# Determine initial simulation horizon from scheduled operations
+max_tick = 0
+if scheduled_ops:
+    max_tick = max(op.end_time for op in scheduled_ops)
 
-    for op in active_ops:
-        
-        module = modules_by_id[op.module]
+protocol = [set[Position]() for _ in range(max_tick + 1)]
 
-        if module.type in (Type.INPUT_0, Type.INPUT_1):
-            dispense_frames = get_dispense_frames(module.pos, reservoir_ranges)
-            
-            # convert binary strings to positions
-            for frame in dispense_frames:
-                frame_num = int(frame["frame"])
-                positions = set[Position]()
-                for y in range(args.height):
-                    row = str(frame[f"y{y}"])
-                    for x in range(args.width):
-                        if row[x] == "1":
-                            positions.add(Position(x, y))
-                protocol_tick = tick + frame_num - 1
-                if protocol_tick not in protocol:
-                    protocol[protocol_tick] = set()
-                protocol[protocol_tick].update(positions)
-                encoded_instructions.add(op)
-        elif module.type == Type.MIX:
-            # For mixing, just activate the module area for the duration
-            module_cells = [Position(x, y) for x in range(module.pos.x, module.pos.x + module.width) for y in range(module.pos.y, module.pos.y + module.height)]
-            
-            module_indices = np.array([[0, 1], [2, 3]], dtype=int)
-            for t in range(op.start_time, op.end_time):
-                if t not in protocol:
-                    protocol[t] = set()
-                # Activate cells in clockwise fashion around perimeter of module area
-                
-                protocol[t].add(module_cells[int(module_indices[0][0])])
+# Build helper mapping from parent ops to their outgoing routes (child_op, route)
+routes_by_parent: dict[Op, list[tuple[Op, object]]] = {}
+for child_op, parent_op, rt in routes:
+    if parent_op not in routes_by_parent:
+        routes_by_parent[parent_op] = []
+    routes_by_parent[parent_op].append((child_op, rt))
 
-                module_indices = np.rot90(module_indices, k=1, axes=(0,1))
-            
-            
-            # After mixing, need to split and move droplets to exits
-            
 
-            encoded_instructions.add(op)
-        elif module.type in (Type.OUTPUT, Type.WASTE):
-            pass
-        elif module.type == Type.STORAGE:
-            pass
+# Phase 1: add in-module operation frames (inputs and mixing)
+for op in scheduled_ops:
+    module = modules_by_id[op.module]
 
-# Add routes in between module end and start times
-for child, parent, route in routes:
-    start_time = parent.end_time
-    for tick in range(len(route.path)):
-        protocol[tick].update(route.path[tick - max(child.start_time, parent.end_time)])
+    # Input operations: play 6-frame dispense animation starting at op.start_time
+    if module.type in (Type.INPUT_0, Type.INPUT_1):
+        dispense_frames = get_dispense_frames(module.pos, reservoir_ranges)
 
-# Write protocol to output json
-# Format: 
-# [{
-#  "y0": "111111111111111100",
-#  "y1": "111111111111111100",
-#  "y2": "111111111111111100",
-#  "y3": "111111111111111100",
-#  "y4": "111111111111111100",
-#  "y5": "111111111111111100",
-#  "y6": "111111111111111100",
-#  "y7": "111111111111111100",
-#  "frame": 1
-# }]
+        for idx, frame in enumerate(dispense_frames):
+            protocol_tick = op.start_time + idx
+
+            # Convert frame rows to active positions, respecting current board size
+            for y in range(args.height):
+                row_key = f"y{y}"
+                if row_key not in frame:
+                    continue
+                row_str = str(frame[row_key])
+                for x in range(min(args.width, len(row_str))):
+                    if row_str[x] == "1":
+                        protocol[protocol_tick].add(Position(x, y))
+
+            if protocol_tick > max_tick:
+                max_tick = protocol_tick
+
+    # Mixing operations: clockwise rotation plus final split frames to route exits
+    elif module.type == Type.MIX:
+        cycle = mixer_cycle_positions(module)
+        cycle_len = len(cycle)
+
+        # Reserve the last tick of the op for splitting towards exit ports (if any)
+        split_tick = max(op.start_time, op.end_time - 1)
+
+        # Core rotation: from start_time up to (but not including) split_tick
+        for t in range(op.start_time, split_tick):
+            idx = (t - op.start_time) % cycle_len
+            pos = cycle[idx]
+            protocol[t].add(pos)
+            if t > max_tick:
+                max_tick = t
+
+        # Splitting: activate exit ports corresponding to routes from this mix op
+        outgoing = routes_by_parent.get(op, [])
+        if outgoing:
+            for child_op, rt in outgoing:
+                # Route src is the chosen port position on this module
+                src_pos = getattr(rt, "src", None)
+                if isinstance(src_pos, Position):
+                    protocol[split_tick].add(src_pos)
+            if split_tick > max_tick:
+                max_tick = split_tick
+
+
+# Phase 2: add routes between operations
+# routes contains tuples (child_op, parent_op, route)
+for child_op, parent_op, rt in routes:
+    route_start_tick = parent_op.end_time
+
+    for step_index, pos in enumerate(getattr(rt, "path", [])):
+        tick = route_start_tick + step_index
+
+        protocol[tick].add(pos)
+        if tick > max_tick:
+            max_tick = tick
+
+
+# Phase 3: write protocol to JSON frames
+import json
 
 with open(args.output_instructions, "w") as f:
-    protocol_frames = list[dict[str, str]]()
-    for tick in range(max(protocol.keys()) + 1):
-        frame_dict: dict[str, str] = {}
+    protocol_frames: list[dict[str, str | int]] = []
+    for tick in range(max_tick + 1):
+        frame_dict: dict[str, str | int] = {}
         for y in range(args.height):
             row = ["0"] * args.width
             if tick in protocol:
                 for pos in protocol[tick]:
-                    if pos.y == y:
+                    if (
+                        0 <= pos.x < args.width
+                        and 0 <= pos.y < args.height
+                        and pos.y == y
+                    ):
                         row[pos.x] = "1"
             frame_dict[f"y{y}"] = "".join(row)
-        frame_dict["frame"] = tick + 1 # type: ignore
+        frame_dict["frame"] = tick + 1
         protocol_frames.append(frame_dict)
-    import json
+
     json.dump(protocol_frames, f, indent=4)

@@ -1,11 +1,8 @@
-
 from dataclasses import dataclass, field
 from typing import Callable
 from networkx.drawing.nx_pydot import read_dot
 
 from api.util import Position, Type
-
-import json
 
 
 @dataclass(eq=True)
@@ -27,7 +24,7 @@ class Op:  # OPERATION IN SCHEDULE
     """
 
     id: str  # M1
-    type: Type 
+    type: Type
     duration: int
     start_time: int = -1  # START TIME
     end_time: int = -1  # END TIME
@@ -75,7 +72,7 @@ class Op:  # OPERATION IN SCHEDULE
 
     def __hash__(self) -> int:
         return hash(self.id)
-    
+
     def animation(self, anchor: Position, tick: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during this operation at a given tick."""
         if self.start_time <= tick < self.end_time:
@@ -92,42 +89,59 @@ class Op:  # OPERATION IN SCHEDULE
             ops_by_type[op.type].append(op)
         return ops_by_type
 
+
 class StorageOp(Op):
     """Represents a storage operation."""
+
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.STORAGE, duration=duration)
 
     def animation(self, anchor: Position, tick: int) -> set[Position]:
         return {anchor}
 
+
 class ReservoirOp(Op):
     """Represents a reservoir operation."""
+
     def __init__(self, id: str, type: Type, duration: int):
         super().__init__(id=id, type=type, duration=duration)
 
+
 class InputOp(ReservoirOp):
     """Represents an input operation."""
+
     def __init__(self, id: str, input_type: Type, duration: int):
         super().__init__(id=id, type=input_type, duration=duration)
 
-    def animation(self, anchor: Position, tick: int) -> set[Position]:
-        """Translates from dispense.json format to set of positions."""
-        json_file = "dispense.json"
-        with open(json_file, "r") as f:
-            dispense_data = json.load(f)
-            # TODO: Process dispense_data and return appropriate positions
-            return {anchor}
-            
-
 class OutputOp(ReservoirOp):
     """Represents an output operation."""
+
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.OUTPUT, duration=duration)
 
 class WasteOp(ReservoirOp):
     """Represents a waste operation."""
+
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.WASTE, duration=duration)
+
+
+class MixOp(Op):
+    """Represents a mixing operation."""
+
+    def __init__(self, id: str, duration: int):
+        super().__init__(id=id, type=Type.MIX, duration=duration)
+
+    def animation(self, anchor: Position, tick: int) -> set[Position]:
+        x0, y0 = anchor.x, anchor.y
+        frames = [
+            Position(x0 + 1, y0),  # top-right (right in x)
+            Position(x0 + 1, y0 + 1),  # bottom-right (up in y)
+            Position(x0, y0 + 1),  # bottom-left (down in x)
+            Position(x0, y0),  # top-left (down in y)
+        ]
+        return {frames[tick % 4]}
+
 
 def load_ops_from_dot(filepath: str):
     op_graph = read_dot(filepath)
@@ -138,7 +152,7 @@ def load_ops_from_dot(filepath: str):
     for nid, attrs in op_graph.nodes(data=True):
         label = (attrs.get("label") or "").strip('"')
         if label == "mix":
-            op_dict[nid] = Op(nid, type=Type.MIX, duration=12)
+            op_dict[nid] = MixOp(nid, duration=16)
             mixing_ops.append(nid)
         elif label == "(0,1)":
             op_dict[nid] = InputOp(nid, duration=6, input_type=Type.INPUT_0)
