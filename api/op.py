@@ -131,6 +131,7 @@ class MixOp(Op):
 
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.MIX, duration=duration)
+        self.split_tick = duration - 4  # Last 4 ticks are for splitting
 
     def animation(self, anchor: Position, tick: int) -> set[Position]:
         x0, y0 = anchor.x, anchor.y

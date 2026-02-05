@@ -15,6 +15,14 @@ class Position(NamedTuple):
             Position(self.x, self.y + 1),
             Position(self.x, self.y - 1),
         ]
+    
+    def __sub__(self, other: "Position") -> "Position":
+        """Subtract two positions."""
+        return Position(self.x - other.x, self.y - other.y)
+    
+    def __add__(self, other: "Position") -> "Position":
+        """Add two positions."""
+        return Position(self.x + other.x, self.y + other.y)
 
     def valid(self, board_size: tuple[int, int]) -> bool:
         """Check if position is within board boundaries."""

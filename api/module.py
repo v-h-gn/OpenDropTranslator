@@ -81,6 +81,24 @@ class Module:
  
         return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
 
+    def get_nearest_internal_pos(self, pos: Position) -> Position:
+        """Get the nearest internal position from position pos."""
+        internal_positions = [
+            Position(x, y)
+            for x in range(self.pos.x, self.pos.x + self.width)
+            for y in range(self.pos.y, self.pos.y + self.height)
+        ]
+        return min(internal_positions, key=lambda p: p.manhattan_distance(pos))
+    
+    def get_padding_cells(self) -> set[Position]:
+        """Get all padding cells around the module."""
+        padding_cells = set[Position]()
+        for x in range(self.pos.x - self.pad, self.pos.x + self.width + self.pad):
+            for y in range(self.pos.y - self.pad, self.pos.y + self.height + self.pad):
+                if not self.is_internal(Position(x, y)):
+                    padding_cells.add(Position(x, y))
+        return padding_cells
+
     def get_unused_ports(self, tick: int) -> list[Position]:
         """Get a list of unused ports for the module at the given tick."""
         return [p for p in self.ports if not self.used_ports[p][tick]]
