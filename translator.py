@@ -104,7 +104,7 @@ reservoir_ranges = {
 max_tick = max(op.end_time for op in scheduled_ops)
 
 protocol = [set[Position]() for _ in range(max_tick + 1)]
-combined_routes = [[set[Position]() for _ in range(BOARD_DIMENSIONS[0] * BOARD_DIMENSIONS[1])] for _ in range(2*len(scheduled_ops))]
+combined_routes = [[set[Position]() for _ in range(BOARD_DIMENSIONS[0] * BOARD_DIMENSIONS[1])] for _ in range(len(scheduled_ops))]
 
 # Build helper mapping from parent ops to their outgoing routes (child_op, route)
 routes_by_parent: dict[Op, list[tuple[Op, Route]]] = {}
@@ -125,10 +125,7 @@ for op_num, op in enumerate(scheduled_ops):
     module = modules_by_id[op.module]
 
     incoming_routes = routes_by_child.get(op, [])
-
-    for parent_op, route in incoming_routes:
-        for tick, pos in enumerate(route.path):
-            combined_routes[op_num][tick].add(pos)
+    outgoing_routes = routes_by_parent.get(op, [])
 
     # Input operations: play 6-frame dispense animation starting at op.start_time
     if module.type in (Type.INPUT_0, Type.INPUT_1):
@@ -147,9 +144,6 @@ for op_num, op in enumerate(scheduled_ops):
                     if row_str[x] == "1":
                         protocol[protocol_tick].add(Position(x, y))
 
-            if protocol_tick > max_tick:
-                max_tick = protocol_tick
-
     # Mixing operations: clockwise rotation plus final split frames to route exits
     elif module.type == Type.MIX:
         # Get droplet entry positions from incoming routes
@@ -162,75 +156,50 @@ for op_num, op in enumerate(scheduled_ops):
 
         # Combine route paths into single set of positions for entry phase
         path_length = max(len(r.path) for _, r in incoming_routes)
-
-
-        for internal_route in internals:
-            for tick, pos in enumerate(internal_route.path):
-                combined_routes[op_num][path_length + tick].add(pos)
         
 
         mix_op = cast(MixOp, op)
         split_tick = mix_op.split_tick  # Last tick is for splitting
         # Core rotation: from start_time up to (but not including) split_tick
-        for t in range(op.start_time, split_tick):
-            idx = (t - op.start_time)
+        for tick in range(op.start_time, split_tick):
+            idx = (tick - op.start_time)
             pos = mix_op.animation(module.pos, idx)
-            protocol[t].update(pos)
-            if t > max_tick:
-                max_tick = t
+            protocol[tick].update(pos)
 
         # Splitting: activate exit ports corresponding to routes from this mix op
-        outgoing = routes_by_parent.get(op, [])
-
-        exits = [ route.src for _, route in outgoing]
+        exits = [route.src for _, route in outgoing_routes]
         externals = list[Route]()
         for exit_pos in exits:
-            externals.append(path(module.get_nearest_internal_pos(exit_pos), exit_pos, module.get_padding_cells(), BOARD_DIMENSIONS))
+            externals.append(path(module.get_nearest_internal_pos(exit_pos), exit_pos, set(), BOARD_DIMENSIONS))
         
-
-
+        for external_route in externals:
+            for tick, pos in enumerate(external_route.path):
+                protocol[split_tick + tick].add(pos)
 
 
     elif module.type == Type.STORAGE:
         # Storage operations: hold droplet in place for duration
         for t in range(op.start_time, op.end_time):
             protocol[t].add(module.pos)
-            if t > max_tick:
-                max_tick = t
+
     elif module.type == Type.OUTPUT or module.type == Type.WASTE:
         # Output/Waste operations: hold droplet in place for duration
         for t in range(op.start_time, op.end_time):
             protocol[t].add(module.pos)
-            if t > max_tick:
-                max_tick = t
-
-        
-
-
-# Phase 2: add routes between operations
-# routes contains tuples (child_op, parent_op, route)
-for child_op, parent_op, rt in routes:
-    route_start_tick = parent_op.end_time
-
-    for step_index, pos in enumerate(getattr(rt, "path", [])):
-        tick = route_start_tick + step_index
-
-        protocol[tick].add(pos)
-        if tick > max_tick:
-            max_tick = tick
-
 
 # Phase 3: write protocol to JSON frames
 import json
 
 with open(args.output_instructions, "w") as f:
     protocol_frames: list[dict[str, str | int]] = []
-    for tick in range(max_tick + 1):
+    max_tick = len(protocol) 
+    for tick in range(max_tick):
         frame_dict: dict[str, str | int] = {}
         for y in range(args.height):
             row = ["0"] * args.width
             for pos in protocol[tick]:
-                row[pos.x] = "1"
+                if pos.y == y:
+                    row[pos.x] = "1"
             frame_dict[f"y{y}"] = "".join(row)
         frame_dict["frame"] = tick + 1
         protocol_frames.append(frame_dict)
