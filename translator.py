@@ -153,6 +153,11 @@ for op_num, op in enumerate(scheduled_ops):
         internals = list[Route]()
         for entry in entries:
             internals.append(path(entry, module.get_nearest_internal_pos(entry), module.get_padding_cells(), BOARD_DIMENSIONS))
+        entry_ticks = max(len(r.path) for r in internals)
+
+        for internal_route in internals:
+            for tick, pos in enumerate(internal_route.path):
+                protocol[op.start_time + tick].add(pos)
 
         # Combine route paths into single set of positions for entry phase
         path_length = max(len(r.path) for _, r in incoming_routes)
@@ -161,8 +166,8 @@ for op_num, op in enumerate(scheduled_ops):
         mix_op = cast(MixOp, op)
         split_tick = mix_op.split_tick  # Last tick is for splitting
         # Core rotation: from start_time up to (but not including) split_tick
-        for tick in range(op.start_time, split_tick):
-            idx = (tick - op.start_time)
+        for tick in range(op.start_time, op.start_time + split_tick):
+            idx = (tick - (op.start_time + entry_ticks))
             pos = mix_op.animation(module.pos, idx)
             protocol[tick].update(pos)
 
@@ -174,8 +179,7 @@ for op_num, op in enumerate(scheduled_ops):
         
         for external_route in externals:
             for tick, pos in enumerate(external_route.path):
-                protocol[split_tick + tick].add(pos)
-
+                protocol[op.start_time + split_tick + tick].add(pos)
 
     elif module.type == Type.STORAGE:
         # Storage operations: hold droplet in place for duration
