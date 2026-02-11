@@ -27,7 +27,7 @@ def left_edge_bind_modules(
                 removes = set[Op]()
                 for i in range(len(op_list)):
                     if op_list[i].start_time >= module.end_time:
-                        op_list[i].module = module.id
+                        op_list[i].module = module
                         module.end_time = op_list[i].end_time
                         op_list[i].bound = True
                         removes.add(op_list[i])

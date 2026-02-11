@@ -2,8 +2,10 @@ from dataclasses import dataclass, field
 from typing import Callable
 from networkx.drawing.nx_pydot import read_dot
 
-from api.util import Position, Type
-
+from api.util import Position, Type, get_dispense_frames
+from api.module import Module
+from translator import RESERVOIR_RANGES
+from translator import RESERVOIR_RANGES
 
 @dataclass(eq=True)
 class Op:  # OPERATION IN SCHEDULE
@@ -29,10 +31,10 @@ class Op:  # OPERATION IN SCHEDULE
     start_time: int = -1  # START TIME
     end_time: int = -1  # END TIME
     size: int = 1  # SIZE OF DROPLET
-    module: str = ""  # WHICH MODULE IT IS ASSIGNED TO
     bound: bool = False  # HAS MODULE
     parents: list["Op"] = field(default_factory=list["Op"])  # PARENT OPERATIONS
     children: list["Op"] = field(default_factory=list["Op"])  # CHILD OPERATIONS
+    module: Module | None = None
 
     def parents_scheduled(
         self, excluding: Callable[["Op"], bool] | None = None
@@ -44,9 +46,9 @@ class Op:  # OPERATION IN SCHEDULE
             parent.is_scheduled() or excluding(parent) for parent in self.parents
         )
 
-    def delay(self, ticks: int) -> None:
-        """Delay the operation and all operations that depend on it by a given number of ticks."""
-        if self.children:
+    def delay(self, ticks: int, propagate: bool = True) -> None:
+        """Delay the operation and (optionally) all operations that depend on it by a given number of ticks."""
+        if propagate and self.children:
             for child in self.children:
                 child.delay(ticks)
         self.start_time += ticks
@@ -72,13 +74,7 @@ class Op:  # OPERATION IN SCHEDULE
 
     def __hash__(self) -> int:
         return hash(self.id)
-
-    def animation(self, anchor: Position, tick: int) -> set[Position]:
-        """Generate the set of positions occupied by the droplet during this operation at a given tick."""
-        if self.start_time <= tick < self.end_time:
-            return {anchor}
-        return set()
-
+    
     @staticmethod
     def ops_by_type(ops: list["Op"]) -> dict[Type, list["Op"]]:
         """Generate a map of module types to lists of Op instances."""
@@ -96,7 +92,7 @@ class StorageOp(Op):
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.STORAGE, duration=duration)
 
-    def animation(self, anchor: Position, tick: int) -> set[Position]:
+    def animation(self, anchor: Position, tick: int, args: None = None) -> set[Position]:
         return {anchor}
 
 
@@ -113,6 +109,11 @@ class InputOp(ReservoirOp):
     def __init__(self, id: str, input_type: Type, duration: int):
         super().__init__(id=id, type=input_type, duration=duration)
 
+    def exec_animation(self, anchor: Position, tick: int) -> set[Position]:
+        dispense_frames = get_dispense_frames(anchor, RESERVOIR_RANGES)
+
+        return dispense_frames[tick]
+    
 class OutputOp(ReservoirOp):
     """Represents an output operation."""
 
@@ -131,7 +132,8 @@ class MixOp(Op):
 
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.MIX, duration=duration)
-        self.split_tick = duration - 4  # Last 4 ticks are for splitting
+        self.split_tick = self.start_time + duration - 4  # Last 4 ticks are for splitting
+        self.load_tick = self.start_time + 1  # First tick is for moving droplets from ports to center
 
     def animation(self, anchor: Position, tick: int) -> set[Position]:
         x0, y0 = anchor.x, anchor.y

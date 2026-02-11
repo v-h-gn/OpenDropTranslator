@@ -1,6 +1,9 @@
-
 from enum import Enum
-from typing import NamedTuple
+from typing import NamedTuple, cast
+
+from api.op import Op
+from api.route import Route
+from api.module import Module
 
 class Position(NamedTuple):
     """Position on the OpenDrop chip grid."""
@@ -64,28 +67,7 @@ class Type(Enum):
     STORAGE = "storage"
     WASTE = "waste"
 
-
-def convert_to_protocol(positions: set[Position], board_size: tuple[int, int] = (17, 8)) -> list[str]:
-    """Convert a set of positions to a protocol string.
-    Args:
-        positions (set[Position]): Set of positions to convert.
-    Returns:
-        list[str]: Protocol strings representing the positions.
-
-    The protocol string format is a list of strings of zeros and ones, where '1' indicates
-    an on electrode at that position and '0' indicates off. Each list element corresponds to a row.    
-    """
-    rows = ["0" * board_size[0] for _ in range(board_size[1])]
-
-    for pos in positions:
-        row = list(rows[pos.y])
-        row[pos.x] = "1"
-        rows[pos.y] = "".join(row)
-
-    return rows
-
-
-def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "dispense.json") -> list[dict[str, str | int]]:
+def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "dispense.json", board_size: tuple[int, int] = (16, 8)) -> list[set[Position]]:
     """
     Load dispense animation frames for a specific reservoir from dispense.json.
     
@@ -94,7 +76,7 @@ def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tu
         dispense_file (str): Path to the dispense.json file
     
     Returns:
-        list[dict]: List of 6 frame dictionaries with y0-y7 electrode states and frame numbers.
+        list[set[Position]]: List of 6 frame sets with active positions.
         
     Dispense animations are stored in dispense.json as:
     - top_left: frames 1-6 (indices 0-5)
@@ -102,6 +84,9 @@ def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tu
     - bottom_left: frames 13-18 (indices 12-17)
     - bottom_right: frames 19-24 (indices 18-23)
     """
+    height = board_size[1]
+    width = board_size[0]
+    protocol = [set[Position]() for _ in range(6)]  # 6 dispense frames
     import json
     
     if reservoir not in reservoir_ranges:
@@ -113,7 +98,20 @@ def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tu
     
     # Extract the frames for this reservoir
     start_idx, end_idx = reservoir_ranges[reservoir]
-    return all_frames[start_idx:end_idx]
+    dispense_frames = all_frames[start_idx:end_idx]
+    
+    # Convert frames to sets of active positions
+    for idx, frame in enumerate(dispense_frames):
+        # Convert frame rows to active positions, respecting current board size
+        for y in range(height):
+            row_key = f"y{y}"
+            if row_key not in frame:
+                continue
+            row_str = str(frame[row_key])
+            for x in range(min(width, len(row_str))):
+                if row_str[x] == "1":
+                    protocol[idx].add(Position(x, y))
+    return protocol
 
 def get_output_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "animation.json") -> list[dict[str, str | int]]:
     """
@@ -138,3 +136,23 @@ def get_output_frames(reservoir: Position, reservoir_ranges: dict[Position, tupl
     # Extract the frames for this reservoir
     start_idx, end_idx = reservoir_ranges[reservoir]
     return all_frames[start_idx:end_idx]
+
+def convert_to_protocol(ops: list[Op], modules_by_id: dict[str, Module], routes: list[tuple[Op, Op, Route]], reservoir_ranges: dict[Position, tuple[int, int]])
+    """Convert scheduled operations and routes to a frame-based protocol."""
+
+    max_tick = max(op.end_time for op in ops)
+
+    protocol = [set[Position]() for _ in range(max_tick + 1)]
+
+    for i in range(max_tick + 1):
+        # For each tick, determine which operations are active and which routes are active
+        active_ops = [op for op in ops if op.start_time <= i < op.end_time]
+        active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
+
+        for active_op in active_ops:
+            # Convert active operations to protocol frames
+            # Input operations: play 6-frame dispense animation starting at op.start_time
+            module = cast(Module, active_op.module)
+            pass
+        
+        for active_route in active_routes:

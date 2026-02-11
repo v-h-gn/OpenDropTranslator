@@ -1,8 +1,8 @@
 import json
 
 from dataclasses import dataclass, field
-from api.util import Position, Type
-
+from api.util import Position, Type, get_dispense_frames
+from translator import RESERVOIR_RANGES
 
 @dataclass
 class Holder:  # STORAGE CAPACITY FOR MODULE
@@ -50,6 +50,9 @@ class Module:
     width: int = 3
     height: int = 3
     pad: int = 1
+    load_time: int = 1
+    exec_time: int = 1
+    stop_time: int = 1
     used_ports: dict[Position, list[bool]] = field(default_factory=dict[Position, list[bool]])
     
     def available(self, tick: int) -> bool:
@@ -110,6 +113,28 @@ class Module:
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
+    
+    def __load_animation__(self, tick: int) -> set[Position]:
+        """Generate the set of positions occupied by the droplet during the loading phase of this operation at a given tick."""
+        return set()
+    
+    def __exec_animation__(self, tick: int) -> set[Position]:
+        """Generate the set of positions occupied by the droplet during this operation at a given tick."""
+        return set()
+    
+    def __stop_animation__(self, tick: int) -> set[Position]:
+        """Generate the set of positions occupied by the droplet during the stopping phase of this operation at a given tick."""
+        return set()
+
+    def animation(self, tick: int) -> set[Position]:
+        if 0 <= tick < self.load_time:
+            return self.__load_animation__(tick)
+        elif 0 <= tick < self.load_time + self.exec_time:
+            return self.__exec_animation__(tick)
+        elif 0 <= tick < self.load_time + self.exec_time + self.stop_time:
+            return self.__stop_animation__(tick)
+        else:
+            return set()
 
     @staticmethod
     def mods_by_type(modules: list["Module"]) -> dict[Type, list["Module"]]:
@@ -120,6 +145,55 @@ class Module:
                 modules_by_type[mod.type] = []
             modules_by_type[mod.type].append(mod)
         return modules_by_type
+
+class StorageModule(Module):
+    """Represents a storage operation."""
+
+    def animation(self, tick: int) -> set[Position]:
+        return {self.pos}
+
+
+class ReservoirModule(Module):
+    """Represents a reservoir operation."""
+
+
+class InputModule(ReservoirModule):
+    """Represents an input operation."""
+    
+    load_time = 0  
+    exec_time = 6
+    stop_time = 0  
+
+    def __exec_animation__(self, tick: int) -> set[Position]:
+        dispense_frames = get_dispense_frames(self.pos, RESERVOIR_RANGES)
+
+        return dispense_frames[tick]
+    
+class OutputModule(ReservoirModule):
+    """Represents an output operation."""
+
+class WasteModule(ReservoirModule):
+    """Represents a waste operation."""
+
+class MixModule(ReservoirModule):
+    """Represents a mixing operation."""
+
+    load_time = 1
+    exec_time = 12
+    stop_time = 3
+
+    def __exec_animation__(self, tick: int) -> set[Position]:
+        x0, y0 = self.pos.x, self.pos.y
+        frames = [
+            Position(x0 + 1, y0),  # top-right (right in x)
+            Position(x0 + 1, y0 + 1),  # bottom-right (up in y)
+            Position(x0, y0 + 1),  # bottom-left (down in x)
+            Position(x0, y0),  # top-left (down in y)
+        ]
+        return {frames[tick % 4]}
+
+
+
 
 def load_modules(filename: str) -> list[Module]:
     """Load module definitions from a JSON file."""

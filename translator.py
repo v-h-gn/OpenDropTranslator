@@ -93,18 +93,10 @@ routes = router(scheduled_ops, modules_by_id)
 
 # Generate frame-based JSON protocol for in-module operations
 
-reservoir_ranges = {
-    Position(1, 1): (0, 6),
-    Position(14, 1): (6, 12),
-    Position(1, 6): (12, 18),
-    Position(14, 6): (18, 24),
-}
-
 # Determine initial simulation horizon from scheduled operations
 max_tick = max(op.end_time for op in scheduled_ops)
 
 protocol = [set[Position]() for _ in range(max_tick + 1)]
-combined_routes = [[set[Position]() for _ in range(BOARD_DIMENSIONS[0] * BOARD_DIMENSIONS[1])] for _ in range(len(scheduled_ops))]
 
 # Build helper mapping from parent ops to their outgoing routes (child_op, route)
 routes_by_parent: dict[Op, list[tuple[Op, Route]]] = {}
@@ -120,6 +112,13 @@ for child_op, parent_op, rt in routes:
         routes_by_child[child_op] = []
     routes_by_child[child_op].append((parent_op, rt))
 
+RESERVOIR_RANGES = {
+    Position(1, 1): (0, 6),
+    Position(14, 1): (6, 12),
+    Position(1, 6): (12, 18),
+    Position(14, 6): (18, 24),
+}
+
 # Phase 1: add in-module operation frames (inputs and mixing)
 for op_num, op in enumerate(scheduled_ops):
     module = modules_by_id[op.module]
@@ -129,7 +128,7 @@ for op_num, op in enumerate(scheduled_ops):
 
     # Input operations: play 6-frame dispense animation starting at op.start_time
     if module.type in (Type.INPUT_0, Type.INPUT_1):
-        dispense_frames = get_dispense_frames(module.pos, reservoir_ranges)
+        dispense_frames = get_dispense_frames(module.pos, RESERVOIR_RANGES)
 
         for idx, frame in enumerate(dispense_frames):
             protocol_tick = op.start_time + idx
@@ -190,6 +189,34 @@ for op_num, op in enumerate(scheduled_ops):
         # Output/Waste operations: hold droplet in place for duration
         for t in range(op.start_time, op.end_time):
             protocol[t].add(module.pos)
+
+# Phase 2: add routing frames for droplet movements between modules
+
+# We need to insert the routing frames between the in-module operation frames.
+# The notation 1x, 1y, 1z denotes parallel operations which have the same start time and are sorted by end time. 
+# 1x2 denotes the route from op 1 to its child op 2. 
+# Frames: Ops 1x 1y 1z... Routes 1x2 1y2 1z2... Ops 2x 2y 2z... Routes 2x3 2y3 2z3... Ops 3x 3y 3z... etc
+
+# We can achieve this by iterating through the scheduled operations in order of their start times, and for each operation, we add its in-module frames first, then add the routing frames to its children before moving on to the next operation.
+
+for op in scheduled_ops:
+    # Add routing frames for routes from this op to its children
+    outgoing_routes = routes_by_parent.get(op, [])
+
+    max_route_length = max((len(route.path) for _, route in outgoing_routes), default=0)
+
+    for child_op, route in outgoing_routes:
+        
+        route_start_tick = op.end_time
+        route_end_tick = op.end_time + len(route.path)
+
+        if child_op.start_time < route_end_tick:
+            child_op.delay(route_end_tick - child_op.start_time, propagate=False)
+
+        
+        
+        for tick, pos in enumerate(route.path):
+            protocol[op.end_time + tick].add(pos)
 
 # Phase 3: write protocol to JSON frames
 import json
