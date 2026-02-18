@@ -1,9 +1,7 @@
+import copy
 from enum import Enum
-from typing import NamedTuple, cast
-
-from api.op import Op
-from api.route import Route
-from api.module import Module
+from collections import deque
+from typing import NamedTuple
 
 class Position(NamedTuple):
     """Position on the OpenDrop chip grid."""
@@ -66,39 +64,30 @@ class Type(Enum):
     OUTPUT = "output"
     STORAGE = "storage"
     WASTE = "waste"
+    INVALID = "invalid"
 
-def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "dispense.json", board_size: tuple[int, int] = (16, 8)) -> list[set[Position]]:
+def get_frames(animation_file: str = "dispense.json", board_size: tuple[int, int] = (16, 8)) -> list[set[Position]]:
     """
-    Load dispense animation frames for a specific reservoir from dispense.json.
+    Load animation frames from a specific animation file dispense.json.
     
     Args:
-        reservoir (Position): Reservoir position - one of Position(1,1), Position(14,1), Position(1,6), Position(14,6)
-        dispense_file (str): Path to the dispense.json file
+        animation_file (str): Path to the animation file
+        board_size (tuple[int, int]): Size of the board (width, height)
     
     Returns:
         list[set[Position]]: List of 6 frame sets with active positions.
-        
-    Dispense animations are stored in dispense.json as:
-    - top_left: frames 1-6 (indices 0-5)
-    - top_right: frames 7-12 (indices 6-11)
-    - bottom_left: frames 13-18 (indices 12-17)
-    - bottom_right: frames 19-24 (indices 18-23)
     """
     height = board_size[1]
     width = board_size[0]
     protocol = [set[Position]() for _ in range(6)]  # 6 dispense frames
     import json
-    
-    if reservoir not in reservoir_ranges:
-        raise ValueError(f"Invalid reservoir: {reservoir}. Must be one of {list(reservoir_ranges.keys())}")
-    
+
     # Load dispense.json
     with open(animation_file, "r") as f:
         all_frames = json.load(f)
     
     # Extract the frames for this reservoir
-    start_idx, end_idx = reservoir_ranges[reservoir]
-    dispense_frames = all_frames[start_idx:end_idx]
+    dispense_frames = all_frames
     
     # Convert frames to sets of active positions
     for idx, frame in enumerate(dispense_frames):
@@ -113,46 +102,25 @@ def get_dispense_frames(reservoir: Position, reservoir_ranges: dict[Position, tu
                     protocol[idx].add(Position(x, y))
     return protocol
 
-def get_output_frames(reservoir: Position, reservoir_ranges: dict[Position, tuple[int, int]], animation_file: str = "animation.json") -> list[dict[str, str | int]]:
-    """
-    Load output animation frames for a specific reservoir from output.json.
-    
-    Args:
-        reservoir (Position): Reservoir position - one of Position(1,1), Position(14,1), Position(1,6), Position(14,6)
-        animation_file (str): Path to the animation.json file
-    Returns:
-        list[dict]: List of 6 frame dictionaries with y0-y7 electrode states and frame numbers.
-    """
-
-    import json
-    
-    if reservoir not in reservoir_ranges:
-        raise ValueError(f"Invalid reservoir: {reservoir}. Must be one of {list(reservoir_ranges.keys())}")
-    
-    # Load output.json
-    with open(animation_file, "r") as f:
-        all_frames = json.load(f)
-    
-    # Extract the frames for this reservoir
-    start_idx, end_idx = reservoir_ranges[reservoir]
-    return all_frames[start_idx:end_idx]
-
-def convert_to_protocol(ops: list[Op], modules_by_id: dict[str, Module], routes: list[tuple[Op, Op, Route]], reservoir_ranges: dict[Position, tuple[int, int]])
-    """Convert scheduled operations and routes to a frame-based protocol."""
-
-    max_tick = max(op.end_time for op in ops)
-
-    protocol = [set[Position]() for _ in range(max_tick + 1)]
-
-    for i in range(max_tick + 1):
-        # For each tick, determine which operations are active and which routes are active
-        active_ops = [op for op in ops if op.start_time <= i < op.end_time]
-        active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
-
-        for active_op in active_ops:
-            # Convert active operations to protocol frames
-            # Input operations: play 6-frame dispense animation starting at op.start_time
-            module = cast(Module, active_op.module)
-            pass
-        
-        for active_route in active_routes:
+def path_find(
+    src: Position,
+    dst: Position,
+    no_go_cells: set[Position] = set(),
+    board_size: tuple[int, int] = (16, 8),
+) -> list[Position]:
+    """Finds a route from src to dst using Lee's algorithm."""
+    init_route = (src, src, [src])
+    q = deque([init_route])
+    visited = {src}
+    route = init_route
+    while q:
+        route = q.popleft()
+        route_src, route_dst, route_path = route
+        if route_dst == dst:
+            return route_path
+        for neighbor in route_dst.get_valid_neighbors(board_size):
+            if neighbor not in visited and neighbor not in no_go_cells:
+                visited.add(neighbor)
+                new_route = (route_src, neighbor, copy.deepcopy(route_path) + [neighbor])
+                q.append(new_route)
+    raise RuntimeError(f"No route found from {src} to {dst}")

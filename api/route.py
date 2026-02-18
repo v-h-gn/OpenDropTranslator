@@ -1,6 +1,8 @@
+
 from dataclasses import dataclass
-from api.module import Module
+
 from api.util import Position, Type
+from api.module import Module
 
 @dataclass
 class Route:
@@ -32,9 +34,18 @@ class Route:
         """Insert a stall at the given tick"""
         self.path.insert(tick, self.path[tick])
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, Route):
+            return False
+        return (
+            self.src == value.src and self.dst == value.dst and self.path == value.path
+        )
+
+    def __lt__(self, other: "Route") -> bool:
+        return len(self.path) < len(other.path)
+
     def print_route(self, board_size: tuple[int, int] = (16, 8), no_go_cells: set[Position] = set(), modules: list[Module] = list()) -> None:
         """Prints a visual representation of the route on the board."""
-        
         board = [["." for _ in range(board_size[1])] for _ in range(board_size[0])]
 
         for cell in no_go_cells:
@@ -78,13 +89,3 @@ class Route:
         for row in board_t:
             print(" ".join(row))
         print()
-
-    def __eq__(self, value: object) -> bool:
-        if not isinstance(value, Route):
-            return False
-        return (
-            self.src == value.src and self.dst == value.dst and self.path == value.path
-        )
-
-    def __lt__(self, other: "Route") -> bool:
-        return len(self.path) < len(other.path)

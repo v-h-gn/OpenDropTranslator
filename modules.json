@@ -8,7 +8,10 @@
             "storage": 3,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/top_left_dispense.json",
+            "exec_animation": "animations/top_left_dispense.json",
+            "stop_animation": "animations/top_left_dispense.json"
         },
         {
             "pos": [14, 1],
@@ -18,17 +21,23 @@
             "storage": 3,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/top_right_dispense.json",
+            "exec_animation": "animations/top_right_dispense.json",
+            "stop_animation": "animations/top_right_dispense.json"
         },
         {
             "pos": [3, 3],
             "id": "mix-0",
             "type": "mix",
-            "ports": [[3, 2], [5, 3], [2, 4], [4, 5]],
+            "ports": [[3, 2], [5, 2], [5, 5], [3, 5]],
             "storage": 2,
-            "width": 2,
+            "width": 3,
             "height": 2,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/mix.json",
+            "exec_animation": "animations/mix.json",
+            "stop_animation": "animations/mix.json"
         },
         {
             "pos": [14, 6],
@@ -38,7 +47,10 @@
             "storage": 3,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/output.json",
+            "exec_animation": "animations/output.json",
+            "stop_animation": "animations/output.json"
         },
         {
             "pos": [10, 7],
@@ -48,7 +60,10 @@
             "storage": 1,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/storage.json",
+            "exec_animation": "animations/storage.json",
+            "stop_animation": "animations/storage.json"
         },
         {
             "pos": [5, 7],
@@ -58,7 +73,10 @@
             "storage": 1,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/storage.json",
+            "exec_animation": "animations/storage.json",
+            "stop_animation": "animations/storage.json"
         },
         {
             "pos": [1, 6],
@@ -68,7 +86,10 @@
             "storage": 6,
             "width": 1,
             "height": 1,
-            "pad": 1
+            "pad": 1,
+            "load_animation": "animations/waste.json",
+            "exec_animation": "animations/waste.json",  
+            "stop_animation": "animations/waste.json"
         }
     ]
 }

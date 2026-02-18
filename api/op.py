@@ -2,10 +2,8 @@ from dataclasses import dataclass, field
 from typing import Callable
 from networkx.drawing.nx_pydot import read_dot
 
-from api.util import Position, Type, get_dispense_frames
-from api.module import Module
-from translator import RESERVOIR_RANGES
-from translator import RESERVOIR_RANGES
+from api.util import Position, Type
+from api.module import Holder, Module
 
 @dataclass(eq=True)
 class Op:  # OPERATION IN SCHEDULE
@@ -34,7 +32,7 @@ class Op:  # OPERATION IN SCHEDULE
     bound: bool = False  # HAS MODULE
     parents: list["Op"] = field(default_factory=list["Op"])  # PARENT OPERATIONS
     children: list["Op"] = field(default_factory=list["Op"])  # CHILD OPERATIONS
-    module: Module | None = None
+    module: Module = field(default_factory=lambda: Module(pos=Position(0, 0), id="unassigned", type=Type.INVALID, ports=[], storage=Holder()))  # ASSIGNED MODULE
 
     def parents_scheduled(
         self, excluding: Callable[["Op"], bool] | None = None
@@ -92,9 +90,6 @@ class StorageOp(Op):
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.STORAGE, duration=duration)
 
-    def animation(self, anchor: Position, tick: int, args: None = None) -> set[Position]:
-        return {anchor}
-
 
 class ReservoirOp(Op):
     """Represents a reservoir operation."""
@@ -109,11 +104,7 @@ class InputOp(ReservoirOp):
     def __init__(self, id: str, input_type: Type, duration: int):
         super().__init__(id=id, type=input_type, duration=duration)
 
-    def exec_animation(self, anchor: Position, tick: int) -> set[Position]:
-        dispense_frames = get_dispense_frames(anchor, RESERVOIR_RANGES)
 
-        return dispense_frames[tick]
-    
 class OutputOp(ReservoirOp):
     """Represents an output operation."""
 
@@ -132,18 +123,6 @@ class MixOp(Op):
 
     def __init__(self, id: str, duration: int):
         super().__init__(id=id, type=Type.MIX, duration=duration)
-        self.split_tick = self.start_time + duration - 4  # Last 4 ticks are for splitting
-        self.load_tick = self.start_time + 1  # First tick is for moving droplets from ports to center
-
-    def animation(self, anchor: Position, tick: int) -> set[Position]:
-        x0, y0 = anchor.x, anchor.y
-        frames = [
-            Position(x0 + 1, y0),  # top-right (right in x)
-            Position(x0 + 1, y0 + 1),  # bottom-right (up in y)
-            Position(x0, y0 + 1),  # bottom-left (down in x)
-            Position(x0, y0),  # top-left (down in y)
-        ]
-        return {frames[tick % 4]}
 
 
 def load_ops_from_dot(filepath: str):

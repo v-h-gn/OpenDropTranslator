@@ -1,5 +1,4 @@
-from api.op import Op
-from api.module import Module
+from api.op import Op, Module
 
 from api.util import Type
 

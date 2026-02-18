@@ -1,8 +1,10 @@
-import json
 
 from dataclasses import dataclass, field
-from api.util import Position, Type, get_dispense_frames
-from translator import RESERVOIR_RANGES
+
+from enum import Enum
+import json
+
+from api.util import Position, Type, path_find, get_frames
 
 @dataclass
 class Holder:  # STORAGE CAPACITY FOR MODULE
@@ -23,6 +25,10 @@ class Holder:  # STORAGE CAPACITY FOR MODULE
         """Retrieve a droplet if there are any stored."""
         self.stored_droplets -= 1
 
+class Port(Enum):
+    UNUSED = 0
+    ENTRANCE = 1
+    EXIT = 2
 
 @dataclass
 class Module:
@@ -50,10 +56,13 @@ class Module:
     width: int = 3
     height: int = 3
     pad: int = 1
-    load_time: int = 1
-    exec_time: int = 1
-    stop_time: int = 1
-    used_ports: dict[Position, list[bool]] = field(default_factory=dict[Position, list[bool]])
+    load_time: int = 0
+    exec_time: int = 0
+    stop_time: int = 0
+    load_animation: str = "load_animation.json"
+    exec_animation: str = "exec_animation.json"
+    stop_animation: str = "stop_animation.json"
+    used_ports: dict[Position, list[Port]] = field(default_factory=dict[Position, list[Port]])
     
     def available(self, tick: int) -> bool:
         """Check if the module is free at the given tick."""
@@ -104,37 +113,43 @@ class Module:
 
     def get_unused_ports(self, tick: int) -> list[Position]:
         """Get a list of unused ports for the module at the given tick."""
-        return [p for p in self.ports if not self.used_ports[p][tick]]
+        return [p for p in self.ports if self.used_ports[p][tick] == Port.UNUSED]
     
     def reset_ports(self) -> None:
         """Reset all ports to unused."""
         for port in self.ports:
-            self.used_ports[port] = [False] * (self.end_time + 1)
+            self.used_ports[port] = [Port.UNUSED] * (self.end_time + 1)
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
     
-    def __load_animation__(self, tick: int) -> set[Position]:
+    def __load_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during the loading phase of this operation at a given tick."""
         return set()
     
-    def __exec_animation__(self, tick: int) -> set[Position]:
+    def __exec_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during this operation at a given tick."""
         return set()
     
-    def __stop_animation__(self, tick: int) -> set[Position]:
+    def __stop_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during the stopping phase of this operation at a given tick."""
         return set()
 
-    def animation(self, tick: int) -> set[Position]:
-        if 0 <= tick < self.load_time:
-            return self.__load_animation__(tick)
-        elif 0 <= tick < self.load_time + self.exec_time:
-            return self.__exec_animation__(tick)
-        elif 0 <= tick < self.load_time + self.exec_time + self.stop_time:
-            return self.__stop_animation__(tick)
+    def animation(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+        duration = self.load_time + self.exec_time + self.stop_time
+        print(f"Generating animation for Module {self.id} at tick {tick} (start: {start}, end: {end})")
+        print(f"Module timings - load: {self.load_time}, exec: {self.exec_time}, stop: {self.stop_time}")
+        if 0 <= tick - start < self.load_time:
+            print(f"Loading phase: tick {tick-start} is within load time of {self.load_time}")
+            return self.__load_animation__(tick-start, start, end)
+        elif self.load_time <= tick - start < self.load_time + self.exec_time:
+            print(f"Execution phase: tick {tick-start} is within exec time of {self.exec_time}")
+            return self.__exec_animation__(tick-start, start, end)
+        elif self.load_time + self.exec_time <= tick - start < duration:
+            print(f"Stopping phase: tick {tick-start} is within stop time of {self.stop_time}")
+            return self.__stop_animation__(tick-start, start, end)
         else:
-            return set()
+            raise ValueError(f"Tick {tick} is out of bounds for operation starting at {start} with duration {duration}.")
 
     @staticmethod
     def mods_by_type(modules: list["Module"]) -> dict[Type, list["Module"]]:
@@ -146,53 +161,98 @@ class Module:
             modules_by_type[mod.type].append(mod)
         return modules_by_type
 
+@dataclass
 class StorageModule(Module):
     """Represents a storage operation."""
 
-    def animation(self, tick: int) -> set[Position]:
+    def animation(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         return {self.pos}
 
-
+@dataclass
 class ReservoirModule(Module):
     """Represents a reservoir operation."""
 
-
+@dataclass
 class InputModule(ReservoirModule):
     """Represents an input operation."""
     
-    load_time = 0  
-    exec_time = 6
-    stop_time = 0  
+    load_time: int = 0  
+    exec_time: int = 6
+    stop_time: int = 0
+    duration: int = load_time + exec_time + stop_time  
 
-    def __exec_animation__(self, tick: int) -> set[Position]:
-        dispense_frames = get_dispense_frames(self.pos, RESERVOIR_RANGES)
-
+    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+        dispense_frames = get_frames(self.exec_animation)
         return dispense_frames[tick]
     
+@dataclass
 class OutputModule(ReservoirModule):
     """Represents an output operation."""
+    load_time: int = 1
+    exec_time: int = 0
+    stop_time: int = 0
+    duration: int = load_time + exec_time + stop_time
 
+@dataclass
 class WasteModule(ReservoirModule):
     """Represents a waste operation."""
+    load_time: int = 1
+    exec_time: int = 0
+    stop_time: int = 0
+    duration: int = load_time + exec_time + stop_time
 
-class MixModule(ReservoirModule):
+@dataclass
+class MixModule(Module):
     """Represents a mixing operation."""
 
-    load_time = 1
-    exec_time = 12
-    stop_time = 3
+    load_time: int = 1
+    exec_time: int = 12
+    stop_time: int = 3
+    duration: int = load_time + exec_time + stop_time
 
-    def __exec_animation__(self, tick: int) -> set[Position]:
-        x0, y0 = self.pos.x, self.pos.y
+    def __load_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+        # Droplets are at ports, need to be moved to center
+        used_ports = [port for port in self.ports if self.used_ports[port][start] == Port.ENTRANCE]
+        nearest_internal_positions = [self.get_nearest_internal_pos(port) for port in used_ports]
+        return set(nearest_internal_positions)
+
+    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         frames = [
-            Position(x0 + 1, y0),  # top-right (right in x)
-            Position(x0 + 1, y0 + 1),  # bottom-right (up in y)
-            Position(x0, y0 + 1),  # bottom-left (down in x)
-            Position(x0, y0),  # top-left (down in y)
+            {self.pos + Position(0, 0),
+            self.pos + Position(1, 0)},  # top-right (right in x)
+            {self.pos + Position(1, 0),
+            self.pos + Position(2, 0)},  # top-right (right in x
+            {self.pos + Position(2, 0),
+             self.pos + Position(2, 1)},  # bottom-right (down in y)
+            {self.pos + Position(2, 1),
+             self.pos + Position(1, 1)},  # bottom-left (left in x)
+            {self.pos + Position(1, 1),
+             self.pos + Position(0, 1)},  # bottom-left (down in x)
+            {self.pos + Position(0, 1),
+             self.pos + Position(0, 0)},  # top-left (down in y)
         ]
-        return {frames[tick % 4]}
+        return frames[tick % 6]
+    
+    def __stop_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+        # Handle splitting animation and moving to exit ports
+        frame_idx = tick - self.load_time - self.exec_time
+        print(f"Stop animation frame index: {frame_idx}")
+        exits = [port for port in self.ports if self.used_ports[port][end - 1] == Port.EXIT]
+        
+        if frame_idx == 0:
+            return {self.pos + Position(0, 0),
+            self.pos + Position(2, 0)}
+        if frame_idx >= 1:
+            nearest_exit_left = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)))
+            nearest_exit_right = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)))
 
+            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, self.get_padding_cells())
+            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, self.get_padding_cells())
 
+            return {route_left[frame_idx - 2] if frame_idx - 2 < len(route_left) else nearest_exit_left,
+            route_right[frame_idx - 2] if frame_idx - 2 < len(route_right) else nearest_exit_right}
+        else:
+            raise ValueError(f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}.")
 
 
 def load_modules(filename: str) -> list[Module]:
@@ -205,10 +265,10 @@ def load_modules(filename: str) -> list[Module]:
         for mod in topology["modules"]:
             
             type = Type(mod["type"])
-
+            module = None
             # If module is a reservoir type
             if type == Type.INPUT_0 or type == Type.INPUT_1:
-                module = Module(
+                module = InputModule(
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
@@ -217,10 +277,27 @@ def load_modules(filename: str) -> list[Module]:
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
                     pad=mod.get("pad", 0),
+                    load_animation=mod["load_animation"],
+                    exec_animation=mod["exec_animation"],
+                    stop_animation=mod["stop_animation"],
                 )
                 module.storage.stored_droplets = module.storage.capacity
-            elif type == Type.OUTPUT or type == Type.WASTE:
-                module = Module(
+            elif type == Type.OUTPUT:
+                module = OutputModule(
+                    pos=Position(*mod["pos"]),
+                    id=mod["id"],
+                    type=Type(mod["type"]),
+                    ports=[Position(*port) for port in mod["ports"]],
+                    storage=Holder(capacity=mod.get("storage", 3)),
+                    width=mod.get("width", 3),
+                    height=mod.get("height", 3),
+                    pad=mod.get("pad", 0),
+                    load_animation=mod["load_animation"],
+                    exec_animation=mod["exec_animation"],
+                    stop_animation=mod["stop_animation"],
+                )
+            elif type == Type.WASTE:
+                module = WasteModule(
                     pos=Position(*mod["pos"]),
                     id=mod["id"],
                     type=Type(mod["type"]),
@@ -229,6 +306,23 @@ def load_modules(filename: str) -> list[Module]:
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
                     pad=mod.get("pad", 0),
+                    load_animation=mod["load_animation"],
+                    exec_animation=mod["exec_animation"],
+                    stop_animation=mod["stop_animation"],
+                )
+            elif type == Type.MIX:
+                module = MixModule(
+                    pos=Position(*mod["pos"]),
+                    id=mod["id"],
+                    type=Type(mod["type"]),
+                    ports=[Position(*port) for port in mod["ports"]],
+                    storage=Holder(capacity=mod.get("storage", 1)),
+                    width=mod.get("width", 3),
+                    height=mod.get("height", 3),
+                    pad=mod.get("pad", 1),
+                    load_animation=mod["load_animation"],
+                    exec_animation=mod["exec_animation"],
+                    stop_animation=mod["stop_animation"],
                 )
             else:
                 module = Module(
@@ -239,7 +333,10 @@ def load_modules(filename: str) -> list[Module]:
                     storage=Holder(capacity=mod.get("storage", 1)),
                     width=mod.get("width", 3),
                     height=mod.get("height", 3),
-                    pad=mod.get("pad", 1),
+                    pad=mod.get("pad", 0),
+                    load_animation=mod.get("load_animation", "load_animation.json"),
+                    exec_animation=mod.get("exec_animation", "exec_animation.json"),
+                    stop_animation=mod.get("stop_animation", "stop_animation.json"),
                 )
                 
             modules_list.append(module)
