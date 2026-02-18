@@ -14,22 +14,25 @@ parser = argparse.ArgumentParser(
     description="Translate dot graph to OpenDrop instructions."
 )
 parser.add_argument(
-    "input_dot",
+    "--input_dot",
     type=str,
+    default="example_protocols/smallgraph.dot",
     help="Path to input dot file representing the operation graph.",
 )
 parser.add_argument(
-    "output_instructions",
+    "--output_instructions",
     type=str,
+    default="protocol.json",
     help="Path to output file for OpenDrop instructions.",
 )
 parser.add_argument(
     "--module_topology",
     type=str,
+    default="modules.json",
     help="Path to JSON file specifying module locations and sizes.",
 )
 parser.add_argument(
-    "--max_droplets", type=int, help="Maximum number of droplets to use."
+    "--max_droplets", type=int, default=100, help="Maximum number of droplets to use."
 )
 parser.add_argument(
     "--height", type=int, default=8, help="Height of the OpenDrop board."

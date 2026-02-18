@@ -237,7 +237,7 @@ class MixModule(Module):
         # Handle splitting animation and moving to exit ports
         frame_idx = tick - self.load_time - self.exec_time
         print(f"Stop animation frame index: {frame_idx}")
-        exits = [port for port in self.ports if self.used_ports[port][end - 1] == Port.EXIT]
+        exits = [port for port in self.ports if self.used_ports[port][end] == Port.EXIT]
         
         if frame_idx == 0:
             return {self.pos + Position(0, 0),
@@ -246,8 +246,8 @@ class MixModule(Module):
             nearest_exit_left = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)))
             nearest_exit_right = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)))
 
-            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, self.get_padding_cells())
-            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, self.get_padding_cells())
+            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
+            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, set())
 
             return {route_left[frame_idx - 2] if frame_idx - 2 < len(route_left) else nearest_exit_left,
             route_right[frame_idx - 2] if frame_idx - 2 < len(route_right) else nearest_exit_right}

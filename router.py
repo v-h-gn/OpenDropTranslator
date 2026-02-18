@@ -247,18 +247,20 @@ def convert_to_protocol(
 
         for child, parent, route in active_routes:
             droplet_arrival = parent.end_time + len(route.path)
+
+            difference = droplet_arrival - child.start_time
             
             # If the child operation starts before the droplet arrives
             if child.start_time < droplet_arrival:
                 # delay child operation to start when droplet arrives
-                child.delay(droplet_arrival - child.start_time)
+                child.delay(difference)
                 # for each port, extend by number of added frames
                 for lists in child.module.used_ports.values():
-                    for tick in range(0, len(route.path)):
-                        lists.insert(tick + 1, lists[child.start_time])
+                    for _ in range(difference):
+                        lists.insert(parent.end_time + 1, Port.UNUSED)
                 # Add route length frames to protocol
-                for tick in range(0, len(route.path)):
-                    protocol.insert(tick + 1, set())
+                for _ in range(difference):
+                    protocol.insert(parent.end_time + 1, set())
 
         for child, parent, route in active_routes:
             path_idx = i - parent.end_time
