@@ -1,10 +1,9 @@
 import argparse
 
 
-from api.op import Op, load_ops_from_dot as load_graph
+from api.op import load_ops_from_dot as load_graph
 from api.module import Module, load_modules
 from api.util import Type, Position
-from api.route import Route
 
 from scheduler import list_scheduler as schedule
 from placer import left_edge_bind_modules as placer
@@ -14,13 +13,13 @@ parser = argparse.ArgumentParser(
     description="Translate dot graph to OpenDrop instructions."
 )
 parser.add_argument(
-    "--input_dot",
+    "--input",
     type=str,
-    default="example_protocols/smallgraph.dot",
+    default="example_protocols/mediumgraph.dot",
     help="Path to input dot file representing the operation graph.",
 )
 parser.add_argument(
-    "--output_instructions",
+    "--output",
     type=str,
     default="protocol.json",
     help="Path to output file for OpenDrop instructions.",
@@ -85,7 +84,7 @@ AVAILABLE_MODULES: dict[Type, int] = {
     Type.STORAGE: storages,
     Type.WASTE: wastes,
 }
-scheduled_ops = schedule(load_graph(args.input_dot), AVAILABLE_MODULES, max_droplets)
+scheduled_ops = schedule(load_graph(args.input), AVAILABLE_MODULES, max_droplets)
 
 placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 
@@ -98,26 +97,12 @@ max_tick = max(op.end_time for op in scheduled_ops)
 
 protocol = [set[Position]() for _ in range(max_tick + 1)]
 
-# Build helper mapping from parent ops to their outgoing routes (child_op, route)
-routes_by_parent: dict[Op, list[tuple[Op, Route]]] = {}
-for child_op, parent_op, rt in routes:
-    if parent_op not in routes_by_parent:
-        routes_by_parent[parent_op] = []
-    routes_by_parent[parent_op].append((child_op, rt))
-
-# Build helper mapping from child ops to their incoming routes (parent_op, route)
-routes_by_child: dict[Op, list[tuple[Op, Route]]] = {}
-for child_op, parent_op, rt in routes:
-    if child_op not in routes_by_child:
-        routes_by_child[child_op] = []
-    routes_by_child[child_op].append((parent_op, rt))
-
-protocol = convert_to_protocol(scheduled_ops, routes)
+protocol = convert_to_protocol(scheduled_ops, modules_list, routes)
 
 # Phase 3: write protocol to JSON frames
 import json
 
-with open(args.output_instructions, "w") as f:
+with open(args.output, "w") as f:
     protocol_frames: list[dict[str, str | int]] = []
     max_tick = len(protocol) 
     for tick in range(max_tick):

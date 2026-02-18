@@ -1,4 +1,4 @@
-from api.util import Position, path_find
+from api.util import Position, Type, path_find
 from api.op import Op
 from api.module import Module, Port
 from api.route import Route
@@ -86,7 +86,7 @@ def get_routes(
     # Print summary before routing
     print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
     for op in active_ops:
-        print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
+       print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
 
     # Find routes for each active operation
     for op in active_ops:
@@ -103,9 +103,7 @@ def get_routes(
 
             # If parent and child are on the same module, skip routing
             if parent_mod == mod:
-                print(
-                    f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}."
-                )
+                print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
             src, dst = parent_mod.get_nearest_ports(tick, mod)
@@ -125,9 +123,7 @@ def get_routes(
                     ),
                 )
                 routes.append((op, parent, route))
-                print(
-                    f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}"
-                )
+                print(f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}")
                 routed_ops.add(op)
             except RuntimeError as e:
                 print(f"Failed to route from {parent.id} to {op.id}: {e}")
@@ -216,51 +212,95 @@ def route(ops: list[Op], mods: list[Module]) -> list[tuple[Op, Op, Route]]:
 
 
 def convert_to_protocol(
-    ops: list[Op], routes: list[tuple[Op, Op, Route]]
+    ops: list[Op], mods: list[Module], routes: list[tuple[Op, Op, Route]]
 ) -> list[set[Position]]:
     """Convert scheduled operations and routes to a frame-based protocol."""
 
     max_tick = max(op.end_time for op in ops)
 
     protocol = [set[Position]() for _ in range(max_tick + 1)]
+    
+    i = 0
 
-    for i in range(max_tick + 1):
+    while i <= max_tick:
         # For each tick, determine which operations are active and which routes are active
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
         print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
-        active_routes = [
-            route
-            for route in routes
-            if route[1].end_time <= i < route[1].end_time + len(route[2].path)
-        ]
-        print(f"Tick {i}: Active routes: ["
-              + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes)
-                + "]")
-
-        for active_op in active_ops:
-            # Convert active operations to protocol frames
-            
-            module = active_op.module
-            protocol[i].update(
-                module.animation(i, active_op.start_time, active_op.end_time)
-            )
-
+        active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
+        print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes)+ "]")
+        
         for child, parent, route in active_routes:
             droplet_arrival = parent.end_time + len(route.path)
-
+            droplet_begin = parent.end_time
             difference = droplet_arrival - child.start_time
+            old_start = child.start_time
             
+            print(f"Droplet from {parent.id}-{parent.type} to {child.id}-{child.type} arrives at t={droplet_arrival}, child starts at {child.start_time}, difference is {difference}")
             # If the child operation starts before the droplet arrives
-            if child.start_time < droplet_arrival:
-                # delay child operation to start when droplet arrives
-                child.delay(difference)
-                # for each port, extend by number of added frames
-                for lists in child.module.used_ports.values():
-                    for _ in range(difference):
-                        lists.insert(parent.end_time + 1, Port.UNUSED)
+            if old_start < droplet_arrival:
+                print(f"Must delay all operations starting at or after {child.start_time} by {difference}.")
+
+                for op in ops:
+                    if op.start_time >= old_start:
+                        print(f"Delaying operation {op.id} from {op.start_time}-{op.end_time} to {op.start_time + difference}-{op.end_time + difference}")                        
+                        op.delay(difference, propagate=False)
+
+                for mod in mods:
+                    print(f"Delaying module {mod.id} by {difference} ticks.")
+                    for _, lists in mod.used_ports.items():
+                        for _ in range(difference):
+                            lists.insert(droplet_begin, Port.UNUSED)
+
+                for op in ops:
+                    if op.start_time >= old_start:
+                        print(f"After delay, operation {op.id} starts at {op.start_time} and ends at {op.end_time}")
+                        used_exits = [pos for pos, port_type in op.module.used_ports.items() if port_type[op.end_time] == Port.EXIT]
+                        used_entrances = [pos for pos, port_type in op.module.used_ports.items() if port_type[op.start_time] == Port.ENTRANCE]
+
+    
+                        if op.type is Type.INPUT_0 or op.type is Type.INPUT_1:
+                            assert len(used_exits) == 1, f"Operation {op.id} of type {op.type} has no exits at start time {op.start_time} after delay!"
+                        elif op.type is Type.OUTPUT or op.type is Type.WASTE:
+                            assert len(used_entrances) == 1, f"Operation {op.id} of type {op.type} has no entrances at end time {op.end_time} after delay!"
+                        elif op.type is Type.MIX:
+                            # We have 2, 
+                            # cases one parent is mix, neither parent is mix
+                            if len(op.children) == 1:
+                                # output case, only 1 exit
+                                assert len(used_exits) == 1, f"Operation {op.id} of type MIX has no exits at start time {op.start_time} after delay!"
+                            elif any(parent.type is Type.MIX for parent in op.parents) and any(child.type is Type.MIX for child in op.children):
+                                # If both a parent and child are MIX, we may have 3 entrances/exits due to the way we route between MIX modules. In this case, we just check that there are at least 2.
+                                assert len(used_entrances) == 1, f"Operation {op.id} of type MIX doesnt have 1 entrance at start time {op.end_time} after delay!"
+                                assert len(used_exits) == 1, f"Operation {op.id} of type MIX doesnt have 1 exits at end time {op.start_time} after delay!"
+                            elif any(parent.type is Type.MIX for parent in op.parents) and not any(child.type is Type.MIX for child in op.children):
+                                assert len(used_entrances) == 1, f"Operation {op.id} of type MIX has doesnt have 1 entrances at start time {op.start_time} after delay!"
+                                assert len(used_exits) == 2, f"Operation {op.id} of type MIX doesnt have 2 exits at end time {op.end_time} after delay!"
+                            elif not any(parent.type is Type.MIX for parent in op.parents) and any(child.type is Type.MIX for child in op.children):
+                                assert len(used_entrances) == 2, f"Operation {op.id} of type MIX has doesnt have 2 entrances at start time {op.start_time} after delay!"
+                                assert len(used_exits) == 1, f"Operation {op.id} of type MIX doesnt have 1 exits at end time {op.end_time} after delay!"
+                            elif not any(parent.type is Type.MIX for parent in op.parents) and not any(child.type is Type.MIX for child in op.children):
+                                assert len(used_entrances) == 2, f"Operation {op.id} of type MIX has doesnt have 2 entrances at start time {op.start_time} after delay!"
+                                assert len(used_exits) == 2, f"Operation {op.id} of type MIX doesnt have 2 exits at end time {op.end_time} after delay!"
+                        else:
+                            assert len(used_exits) == 1, f"Operation {op.id} of type {op.type} has no exits at start time {op.start_time} after delay!"
+                            assert len(used_entrances) == 1, f"Operation {op.id} of type {op.type} has no entrances at end time {op.end_time} after delay!"
                 # Add route length frames to protocol
                 for _ in range(difference):
                     protocol.insert(parent.end_time + 1, set())
+            elif old_start > droplet_arrival:
+                print(f"Must increase route length by {old_start - droplet_arrival} to prevent droplet from hanging in the air before child operation starts.")
+                for _ in range(0, old_start - droplet_arrival):
+                    route.path.insert(-1, route.path[-1])
+            else:
+                print(f"No delay needed for child {child.id} as it starts at the same time as droplet arrival.")
+                
+        active_ops = [op for op in ops if op.start_time <= i < op.end_time]
+
+
+        for active_op in active_ops:
+            # Convert active operations to protocol frames
+            module = active_op.module
+            protocol[i].update(module.animation(i, active_op.start_time, active_op.end_time))
 
         for child, parent, route in active_routes:
             path_idx = i - parent.end_time
@@ -275,5 +315,8 @@ def convert_to_protocol(
         print(f"Frame {i}:")
         for row in board:
             print("".join(row))
+
+        i +=1
+        max_tick = max([op.end_time for op in ops])
 
     return protocol

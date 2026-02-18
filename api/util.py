@@ -36,6 +36,9 @@ class Position(NamedTuple):
     def manhattan_distance(self, other: "Position") -> int:
         """Calculate Manhattan distance to another position."""
         return abs(self.x - other.x) + abs(self.y - other.y)
+    
+    def __repr__(self) -> str:
+        return f"({self.x}, {self.y})"
 
     @staticmethod
     def irv(pos1: "Position | None", pos2: "Position | None") -> bool:
