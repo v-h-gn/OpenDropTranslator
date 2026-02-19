@@ -9,12 +9,12 @@ from placer import left_edge_bind_modules as placer
 from router import get_no_go_cells, route as router
 
 AVAILABLE_MODULES = {
-        Type.MIX: 1,
-        Type.INPUT_0: 1,
-        Type.INPUT_1: 1,
-        Type.OUTPUT: 1,
-        Type.STORAGE: 2,
-        Type.WASTE: 1,
+    Type.MIX: 1,
+    Type.INPUT_0: 1,
+    Type.INPUT_1: 1,
+    Type.OUTPUT: 1,
+    Type.STORAGE: 2,
+    Type.WASTE: 1,
 }
 
 def test_position():
@@ -111,10 +111,10 @@ def test_router():
         print(op)
     print("Routing droplets...")
 
-    routes = router(schedule, mods_by_id)
+    routes = router(schedule, modules_list)  # Pass list, not dict
     for op1, op2, route in routes:
         print(f"Route from {op2.id} of type {op2.type} to {op1.id} of type {op1.type}:")
-        no_go_cells_by_op = get_no_go_cells([op1, op2], mods_by_id)
+        no_go_cells_by_op = get_no_go_cells([op1, op2], modules_list)  # Pass list, not dict
         no_go_cells = no_go_cells_by_op[op1].intersection(no_go_cells_by_op[op2])
         route.print_route(modules=modules_list)
         default_route = Route(src=Position(-1, -1), dst=Position(-1, -1), path=[])

@@ -1,10 +1,10 @@
-
 from dataclasses import dataclass, field
 
 from enum import Enum
 import json
 
 from api.util import Position, Type, path_find, get_frames
+
 
 @dataclass
 class Holder:  # STORAGE CAPACITY FOR MODULE
@@ -25,10 +25,12 @@ class Holder:  # STORAGE CAPACITY FOR MODULE
         """Retrieve a droplet if there are any stored."""
         self.stored_droplets -= 1
 
+
 class Port(Enum):
     UNUSED = 0
     ENTRANCE = 1
     EXIT = 2
+
 
 @dataclass(eq=True)
 class Module:
@@ -62,8 +64,10 @@ class Module:
     load_animation: str = "load_animation.json"
     exec_animation: str = "exec_animation.json"
     stop_animation: str = "stop_animation.json"
-    used_ports: dict[Position, list[Port]] = field(default_factory=dict[Position, list[Port]])
-    
+    used_ports: dict[Position, list[Port]] = field(
+        default_factory=dict[Position, list[Port]]
+    )
+
     def available(self, tick: int) -> bool:
         """Check if the module is free at the given tick."""
         return self.end_time <= tick
@@ -79,18 +83,22 @@ class Module:
     def has_space(self) -> bool:
         """Check if the module has storage space available."""
         return self.storage.has_space()
-    
+
     def is_internal(self, pos: Position) -> bool:
         """Check if a position is within the module's area."""
-        return (self.pos.x <= pos.x < self.pos.x + self.width) and (self.pos.y <= pos.y < self.pos.y + self.height)
+        return (self.pos.x <= pos.x < self.pos.x + self.width) and (
+            self.pos.y <= pos.y < self.pos.y + self.height
+        )
 
-    def get_nearest_ports(self, tick: int, other_mod: "Module") -> tuple[Position, Position]:
+    def get_nearest_ports(
+        self, tick: int, other_mod: "Module"
+    ) -> tuple[Position, Position]:
         """Get the closest unused entrance/exit pairs for the given module."""
         unused_self_ports = self.get_unused_ports(tick)
         unused_other_ports = other_mod.get_unused_ports(tick)
 
         pairs = [(p1, p2) for p1 in unused_self_ports for p2 in unused_other_ports]
- 
+
         return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
 
     def get_nearest_internal_pos(self, pos: Position) -> Position:
@@ -101,7 +109,7 @@ class Module:
             for y in range(self.pos.y, self.pos.y + self.height)
         ]
         return min(internal_positions, key=lambda p: p.manhattan_distance(pos))
-    
+
     def get_padding_cells(self) -> set[Position]:
         """Get all padding cells around the module."""
         padding_cells = set[Position]()
@@ -114,18 +122,21 @@ class Module:
     def get_unused_ports(self, tick: int) -> list[Position]:
         """Get a list of unused ports for the module at the given tick."""
         return [p for p in self.ports if self.used_ports[p][tick] == Port.UNUSED]
-    
+
     def reset_ports(self) -> None:
         """Reset all ports to unused."""
+        # Size arrays with generous buffer to account for delays during protocol conversion
+        # Operations can be delayed significantly if droplets arrive at different times
+        array_size = max(self.end_time + 50, 400)  # At least 200 to handle delays
         for port in self.ports:
-            self.used_ports[port] = [Port.UNUSED] * (self.end_time + 1)
+            self.used_ports[port] = [Port.UNUSED] * array_size
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
-    
+
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Module):
             return False
@@ -133,34 +144,31 @@ class Module:
 
     def __hash__(self) -> int:
         return hash(self.id)
-    
+
     def __load_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during the loading phase of this operation at a given tick."""
         return set()
-    
+
     def __exec_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during this operation at a given tick."""
         return set()
-    
+
     def __stop_animation__(self, tick: int, start: int, end: int) -> set[Position]:
         """Generate the set of positions occupied by the droplet during the stopping phase of this operation at a given tick."""
         return set()
 
     def animation(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         duration = self.load_time + self.exec_time + self.stop_time
-        print(f"Generating animation for Module {self.id} at tick {tick} (start: {start}, end: {end})")
-        print(f"Module timings - load: {self.load_time}, exec: {self.exec_time}, stop: {self.stop_time}")
         if 0 <= tick - start < self.load_time:
-            print(f"Loading phase: tick {tick-start} is within load time of {self.load_time}")
-            return self.__load_animation__(tick-start, start, end)
+            return self.__load_animation__(tick - start, start, end)
         elif self.load_time <= tick - start < self.load_time + self.exec_time:
-            print(f"Execution phase: tick {tick-start} is within exec time of {self.exec_time}")
-            return self.__exec_animation__(tick-start, start, end)
+            return self.__exec_animation__(tick - start, start, end)
         elif self.load_time + self.exec_time <= tick - start < duration:
-            print(f"Stopping phase: tick {tick-start} is within stop time of {self.stop_time}")
-            return self.__stop_animation__(tick-start, start, end)
+            return self.__stop_animation__(tick - start, start, end)
         else:
-            raise ValueError(f"Tick {tick} is out of bounds for operation starting at {start} with duration {duration}.")
+            raise ValueError(
+                f"Tick {tick} is out of bounds for operation starting at {start} with duration {duration}."
+            )
 
     @staticmethod
     def mods_by_type(modules: list["Module"]) -> dict[Type, list["Module"]]:
@@ -172,45 +180,52 @@ class Module:
             modules_by_type[mod.type].append(mod)
         return modules_by_type
 
+
 @dataclass
 class StorageModule(Module):
     """Represents a storage operation."""
 
     def animation(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         return {self.pos}
-    
+
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
+
 
 @dataclass
 class ReservoirModule(Module):
     """Represents a reservoir operation."""
 
+
 @dataclass
 class InputModule(ReservoirModule):
     """Represents an input operation."""
-    
-    load_time: int = 0  
+
+    load_time: int = 0
     exec_time: int = 6
     stop_time: int = 0
-    duration: int = load_time + exec_time + stop_time  
+    duration: int = load_time + exec_time + stop_time
 
-    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+    def __exec_animation__(
+        self, tick: int, start: int = 0, end: int = 0
+    ) -> set[Position]:
         dispense_frames = get_frames(self.exec_animation)
         return dispense_frames[tick]
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
-    
+
+
 @dataclass
 class OutputModule(ReservoirModule):
     """Represents an output operation."""
+
     load_time: int = 1
     exec_time: int = 0
     stop_time: int = 0
@@ -218,13 +233,15 @@ class OutputModule(ReservoirModule):
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
+
 
 @dataclass
 class WasteModule(ReservoirModule):
     """Represents a waste operation."""
+
     load_time: int = 1
     exec_time: int = 0
     stop_time: int = 0
@@ -232,9 +249,10 @@ class WasteModule(ReservoirModule):
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
+
 
 @dataclass
 class MixModule(Module):
@@ -245,65 +263,172 @@ class MixModule(Module):
     stop_time: int = 3
     duration: int = load_time + exec_time + stop_time
 
-    def __load_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+    def __load_animation__(
+        self, tick: int, start: int = 0, end: int = 0
+    ) -> set[Position]:
         # Droplets are at ports, need to be moved to center
-        used_ports = [port for port in self.ports if self.used_ports[port][start] == Port.ENTRANCE]
-        nearest_internal_positions = [self.get_nearest_internal_pos(port) for port in used_ports]
+        used_ports = [
+            port for port in self.ports if self.used_ports[port][start] == Port.ENTRANCE
+        ]
+        nearest_internal_positions = [
+            self.get_nearest_internal_pos(port) for port in used_ports
+        ]
         return set(nearest_internal_positions)
 
-    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+    def __exec_animation__(
+        self, tick: int, start: int = 0, end: int = 0
+    ) -> set[Position]:
         frames = [
-            {self.pos + Position(0, 0),
-            self.pos + Position(1, 0)},  # top-right (right in x)
-            {self.pos + Position(1, 0),
-            self.pos + Position(2, 0)},  # top-right (right in x
-            {self.pos + Position(2, 0),
-             self.pos + Position(2, 1)},  # bottom-right (down in y)
-            {self.pos + Position(2, 1),
-             self.pos + Position(1, 1)},  # bottom-left (left in x)
-            {self.pos + Position(1, 1),
-             self.pos + Position(0, 1)},  # bottom-left (down in x)
-            {self.pos + Position(0, 1),
-             self.pos + Position(0, 0)},  # top-left (down in y)
+            {
+                self.pos + Position(0, 0),
+                self.pos + Position(1, 0),
+            },  # top-right (right in x)
+            {
+                self.pos + Position(1, 0),
+                self.pos + Position(2, 0),
+            },  # top-right (right in x
+            {
+                self.pos + Position(2, 0),
+                self.pos + Position(2, 1),
+            },  # bottom-right (down in y)
+            {
+                self.pos + Position(2, 1),
+                self.pos + Position(1, 1),
+            },  # bottom-left (left in x)
+            {
+                self.pos + Position(1, 1),
+                self.pos + Position(0, 1),
+            },  # bottom-left (down in x)
+            {
+                self.pos + Position(0, 1),
+                self.pos + Position(0, 0),
+            },  # top-left (down in y)
         ]
         return frames[tick % 6]
-    
-    def __stop_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
+
+    def __stop_animation__(
+        self, tick: int, start: int = 0, end: int = 0
+    ) -> set[Position]:
         # Handle splitting animation and moving to exit ports
         frame_idx = tick - self.load_time - self.exec_time
-        print(f"Stop animation frame index: {frame_idx}")
-        
-        # Look for EXIT ports at end time or shortly after
-        exits = [port for port in self.ports if self.used_ports[port][end] == Port.EXIT or (end+1 < len(self.used_ports[port]) and self.used_ports[port][end+1] == Port.EXIT)]
-        
-        # If no EXIT ports found, check if droplets stay on module (internal routing) or return to center
-        if not exits:
-            print(f"Warning: No exit ports found for module {self.id} at time {end}. Returning center positions.")
-            # Return center positions - droplets may be routing internally or between co-located modules
-            if frame_idx == 0:
-                return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
-            else:
-                # Continue at center if no exit available
-                return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
+
+        # Look for EXIT ports at end time - the port marking shifts with operation delays
+        exits = [
+            port
+            for port in self.ports
+            if end < len(self.used_ports[port])
+            and self.used_ports[port][end] == Port.EXIT
+        ]
+
+        # If no external exits, droplets are likely being transferred internally
+        # (all children on same module). Keep droplets in the module.
+        assert exits, f"MixModule {self.id} has no EXIT ports at end time {end}. Check for internal transfers or scheduling issues."
         
         if frame_idx == 0:
-            return {self.pos + Position(0, 0),
-            self.pos + Position(2, 0)}
+            return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
         if frame_idx >= 1:
-            nearest_exit_left = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)))
-            nearest_exit_right = min(exits, key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)))
+            nearest_exit_left = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
+            )
+            nearest_exit_right = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
+            )
 
             route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
-            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, set())
+            route_right = path_find(
+                self.pos + Position(2, 0), nearest_exit_right, set()
+            )
 
-            return {route_left[frame_idx - 1] if frame_idx - 1 < len(route_left) else nearest_exit_left,
-            route_right[frame_idx - 1] if frame_idx - 1 < len(route_right) else nearest_exit_right}
+            return {
+                (
+                    route_left[frame_idx - 1]
+                    if frame_idx - 1 < len(route_left)
+                    else nearest_exit_left
+                ),
+                (
+                    route_right[frame_idx - 1]
+                    if frame_idx - 1 < len(route_right)
+                    else nearest_exit_right
+                ),
+            }
         else:
-            raise ValueError(f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}.")
-        
+            raise ValueError(
+                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
+            )
+
+        if frame_idx == 0:
+            return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
+        if frame_idx >= 1:
+            nearest_exit_left = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
+            )
+            nearest_exit_right = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
+            )
+
+            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
+            route_right = path_find(
+                self.pos + Position(2, 0), nearest_exit_right, set()
+            )
+
+            return {
+                (
+                    route_left[frame_idx - 1]
+                    if frame_idx - 1 < len(route_left)
+                    else nearest_exit_left
+                ),
+                (
+                    route_right[frame_idx - 1]
+                    if frame_idx - 1 < len(route_right)
+                    else nearest_exit_right
+                ),
+            }
+        else:
+            raise ValueError(
+                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
+            )
+
+        if frame_idx == 0:
+            return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
+        if frame_idx >= 1:
+            nearest_exit_left = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
+            )
+            nearest_exit_right = min(
+                exits,
+                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
+            )
+
+            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
+            route_right = path_find(
+                self.pos + Position(2, 0), nearest_exit_right, set()
+            )
+
+            return {
+                (
+                    route_left[frame_idx - 1]
+                    if frame_idx - 1 < len(route_left)
+                    else nearest_exit_left
+                ),
+                (
+                    route_right[frame_idx - 1]
+                    if frame_idx - 1 < len(route_right)
+                    else nearest_exit_right
+                ),
+            }
+        else:
+            raise ValueError(
+                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
+            )
+
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
-    
+
     def __str__(self) -> str:
         return self.__repr__()
 
@@ -316,7 +441,7 @@ def load_modules(filename: str) -> list[Module]:
         topology = json.load(f)
 
         for mod in topology["modules"]:
-            
+
             type = Type(mod["type"])
             module = None
             # If module is a reservoir type
