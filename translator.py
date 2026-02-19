@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--input",
     type=str,
-    default="example_protocols/mediumgraph.dot",
+    default="example_protocols/largegraph.dot",
     help="Path to input dot file representing the operation graph.",
 )
 parser.add_argument(
@@ -43,7 +43,7 @@ parser.add_argument(
     "--heaters", type=int, default=3, help="Number of heating modules available."
 )
 parser.add_argument(
-    "--mixers", type=int, default=2, help="Max number of mixing modules to use."
+    "--mixers", type=int, default=1, help="Max number of mixing modules to use."
 )
 parser.add_argument(
     "--storages", type=int, default=3, help="Max number of storage units to use."
@@ -94,8 +94,6 @@ routes = router(scheduled_ops, modules_list)
 
 # Determine initial simulation horizon from scheduled operations
 max_tick = max(op.end_time for op in scheduled_ops)
-
-protocol = [set[Position]() for _ in range(max_tick + 1)]
 
 protocol = convert_to_protocol(scheduled_ops, modules_list, routes)
 

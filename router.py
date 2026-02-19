@@ -176,7 +176,7 @@ def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
 
             if route_must_stall:
                 # Insert a stall by repeating the current position
-                route.stall(cycle)
+                route.stall(cycle-2)
                 route_must_stall = False
             else:
                 cycle += 1

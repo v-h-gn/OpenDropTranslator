@@ -32,7 +32,7 @@ class Route:
     
     def stall(self, tick: int) -> None:
         """Insert a stall at the given tick"""
-        self.path.insert(tick, self.path[tick])
+        self.path.insert(tick, self.path[tick-1])
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Route):

@@ -272,7 +272,19 @@ class MixModule(Module):
         # Handle splitting animation and moving to exit ports
         frame_idx = tick - self.load_time - self.exec_time
         print(f"Stop animation frame index: {frame_idx}")
+        
+        # Look for EXIT ports at end time or shortly after
         exits = [port for port in self.ports if self.used_ports[port][end] == Port.EXIT or (end+1 < len(self.used_ports[port]) and self.used_ports[port][end+1] == Port.EXIT)]
+        
+        # If no EXIT ports found, check if droplets stay on module (internal routing) or return to center
+        if not exits:
+            print(f"Warning: No exit ports found for module {self.id} at time {end}. Returning center positions.")
+            # Return center positions - droplets may be routing internally or between co-located modules
+            if frame_idx == 0:
+                return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
+            else:
+                # Continue at center if no exit available
+                return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
         
         if frame_idx == 0:
             return {self.pos + Position(0, 0),
