@@ -64,9 +64,7 @@ class Module:
     load_animation: str = "load_animation.json"
     exec_animation: str = "exec_animation.json"
     stop_animation: str = "stop_animation.json"
-    used_ports: dict[Position, list[Port]] = field(
-        default_factory=dict[Position, list[Port]]
-    )
+    used_ports: dict[Position, list[Port]] = field(default_factory=dict[Position, list[Port]])
 
     def available(self, tick: int) -> bool:
         """Check if the module is free at the given tick."""
@@ -86,13 +84,9 @@ class Module:
 
     def is_internal(self, pos: Position) -> bool:
         """Check if a position is within the module's area."""
-        return (self.pos.x <= pos.x < self.pos.x + self.width) and (
-            self.pos.y <= pos.y < self.pos.y + self.height
-        )
+        return (self.pos.x <= pos.x < self.pos.x + self.width) and (self.pos.y <= pos.y < self.pos.y + self.height)
 
-    def get_nearest_ports(
-        self, tick: int, other_mod: "Module"
-    ) -> tuple[Position, Position]:
+    def get_nearest_ports(self, tick: int, other_mod: "Module") -> tuple[Position, Position]:
         """Get the closest unused entrance/exit pairs for the given module."""
         unused_self_ports = self.get_unused_ports(tick)
         unused_other_ports = other_mod.get_unused_ports(tick)
@@ -209,9 +203,7 @@ class InputModule(ReservoirModule):
     stop_time: int = 0
     duration: int = load_time + exec_time + stop_time
 
-    def __exec_animation__(
-        self, tick: int, start: int = 0, end: int = 0
-    ) -> set[Position]:
+    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         dispense_frames = get_frames(self.exec_animation)
         return dispense_frames[tick]
 
@@ -263,21 +255,13 @@ class MixModule(Module):
     stop_time: int = 3
     duration: int = load_time + exec_time + stop_time
 
-    def __load_animation__(
-        self, tick: int, start: int = 0, end: int = 0
-    ) -> set[Position]:
+    def __load_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         # Droplets are at ports, need to be moved to center
-        used_ports = [
-            port for port in self.ports if self.used_ports[port][start] == Port.ENTRANCE
-        ]
-        nearest_internal_positions = [
-            self.get_nearest_internal_pos(port) for port in used_ports
-        ]
+        used_ports = [port for port in self.ports if self.used_ports[port][start] == Port.ENTRANCE]
+        nearest_internal_positions = [self.get_nearest_internal_pos(port) for port in used_ports]
         return set(nearest_internal_positions)
 
-    def __exec_animation__(
-        self, tick: int, start: int = 0, end: int = 0
-    ) -> set[Position]:
+    def __exec_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         frames = [
             {
                 self.pos + Position(0, 0),
@@ -306,57 +290,20 @@ class MixModule(Module):
         ]
         return frames[tick % 6]
 
-    def __stop_animation__(
-        self, tick: int, start: int = 0, end: int = 0
-    ) -> set[Position]:
+    def __stop_animation__(self, tick: int, start: int = 0, end: int = 0) -> set[Position]:
         # Handle splitting animation and moving to exit ports
         frame_idx = tick - self.load_time - self.exec_time
 
         # Look for EXIT ports at end time - the port marking shifts with operation delays
         exits = [
-            port
-            for port in self.ports
-            if end < len(self.used_ports[port])
-            and self.used_ports[port][end] == Port.EXIT
+            port for port in self.ports if end < len(self.used_ports[port]) and self.used_ports[port][end] == Port.EXIT
         ]
 
         # If no external exits, droplets are likely being transferred internally
         # (all children on same module). Keep droplets in the module.
-        assert exits, f"MixModule {self.id} has no EXIT ports at end time {end}. Check for internal transfers or scheduling issues."
-        
-        if frame_idx == 0:
-            return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
-        if frame_idx >= 1:
-            nearest_exit_left = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
-            )
-            nearest_exit_right = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
-            )
-
-            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
-            route_right = path_find(
-                self.pos + Position(2, 0), nearest_exit_right, set()
-            )
-
-            return {
-                (
-                    route_left[frame_idx - 1]
-                    if frame_idx - 1 < len(route_left)
-                    else nearest_exit_left
-                ),
-                (
-                    route_right[frame_idx - 1]
-                    if frame_idx - 1 < len(route_right)
-                    else nearest_exit_right
-                ),
-            }
-        else:
-            raise ValueError(
-                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
-            )
+        assert (
+            exits
+        ), f"MixModule {self.id} has no EXIT ports at end time {end}. Check for internal transfers or scheduling issues."
 
         if frame_idx == 0:
             return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
@@ -371,60 +318,14 @@ class MixModule(Module):
             )
 
             route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
-            route_right = path_find(
-                self.pos + Position(2, 0), nearest_exit_right, set()
-            )
+            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, set())
 
             return {
-                (
-                    route_left[frame_idx - 1]
-                    if frame_idx - 1 < len(route_left)
-                    else nearest_exit_left
-                ),
-                (
-                    route_right[frame_idx - 1]
-                    if frame_idx - 1 < len(route_right)
-                    else nearest_exit_right
-                ),
+                (route_left[frame_idx - 1] if frame_idx - 1 < len(route_left) else nearest_exit_left),
+                (route_right[frame_idx - 1] if frame_idx - 1 < len(route_right) else nearest_exit_right),
             }
         else:
-            raise ValueError(
-                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
-            )
-
-        if frame_idx == 0:
-            return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
-        if frame_idx >= 1:
-            nearest_exit_left = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
-            )
-            nearest_exit_right = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
-            )
-
-            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
-            route_right = path_find(
-                self.pos + Position(2, 0), nearest_exit_right, set()
-            )
-
-            return {
-                (
-                    route_left[frame_idx - 1]
-                    if frame_idx - 1 < len(route_left)
-                    else nearest_exit_left
-                ),
-                (
-                    route_right[frame_idx - 1]
-                    if frame_idx - 1 < len(route_right)
-                    else nearest_exit_right
-                ),
-            }
-        else:
-            raise ValueError(
-                f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}."
-            )
+            raise ValueError(f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}.")
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"

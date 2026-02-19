@@ -211,9 +211,9 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
     while i <= max_tick:
         # For each tick, determine which operations are active and which routes are active
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
-        print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
+        #print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
         active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
-        print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
+        #print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
 
         for child, parent, route in active_routes:
             droplet_arrival = parent.end_time + len(route.path)
@@ -221,22 +221,18 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
             difference = droplet_arrival - child.start_time
             old_start = child.start_time
 
-            print(
-                f"Droplet from {parent.id}-{parent.type} to {child.id}-{child.type} arrives at t={droplet_arrival}, child starts at {child.start_time}, difference is {difference}"
-            )
+            #print(f"Droplet from {parent.id}-{parent.type} to {child.id}-{child.type} arrives at t={droplet_arrival}, child starts at {child.start_time}, difference is {difference}")
             # If the child operation starts before the droplet arrives
             if old_start < droplet_arrival:
-                print(f"Must delay all operations starting at or after {child.start_time} by {difference}.")
+                #print(f"Must delay all operations starting at or after {child.start_time} by {difference}.")
 
                 for op in ops:
                     if op.start_time >= old_start:
-                        print(
-                            f"Delaying operation {op.id} from {op.start_time}-{op.end_time} to {op.start_time + difference}-{op.end_time + difference}"
-                        )
+                        #print(f"Delaying operation {op.id} from {op.start_time}-{op.end_time} to {op.start_time + difference}-{op.end_time + difference}")
                         op.delay(difference, propagate=False)
 
                 for mod in mods:
-                    print(f"Delaying module {mod.id} by {difference} ticks.")
+                    # print(f"Delaying module {mod.id} by {difference} ticks.")
                     for _, port_list in mod.used_ports.items():
                         # Insert UNUSED ports at the position where delayed operations start
                         # This shifts all port statuses for delayed operations forward by 'difference'
@@ -249,7 +245,7 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
                 # But operations with start_time < old_start are NOT delayed, yet their EXIT ports
                 # (which might be at position >= old_start) DO get shifted, creating a mismatch.
                 # Solution: Clear all port markings and remark them at the correct positions.
-                print(f"Remarking ports for all routes after delay to ensure consistency...")
+                #print(f"Remarking ports for all routes after delay to ensure consistency...")
                 
                 # First, clear all EXIT and ENTRANCE markings
                 for mod in mods:
@@ -267,16 +263,16 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
                     # Remark EXIT at parent's current end_time
                     if parent_op.end_time < len(parent_op.module.used_ports[src]):
                         parent_op.module.used_ports[src][parent_op.end_time] = Port.EXIT
-                        print(f"Remarked EXIT port at {src} for {parent_op.id} at time {parent_op.end_time}")
+                        #print(f"Remarked EXIT port at {src} for {parent_op.id} at time {parent_op.end_time}")
                     
                     # Remark ENTRANCE at child's current start_time  
                     if child_op.start_time < len(child_op.module.used_ports[dst]):
                         child_op.module.used_ports[dst][child_op.start_time] = Port.ENTRANCE
-                        print(f"Remarked ENTRANCE port at {dst} for {child_op.id} at time {child_op.start_time}")
+                        #print(f"Remarked ENTRANCE port at {dst} for {child_op.id} at time {child_op.start_time}")
 
                 for op in ops:
                     if op.start_time >= old_start:
-                        print(f"After delay, operation {op.id} starts at {op.start_time} and ends at {op.end_time}")
+                        #print(f"After delay, operation {op.id} starts at {op.start_time} and ends at {op.end_time}")
                         used_exits = [
                             pos
                             for pos, port_type in op.module.used_ports.items()
@@ -352,14 +348,10 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
                 for _ in range(difference):
                     protocol.insert(parent.end_time + 1, set())
             elif old_start > droplet_arrival:
-                print(
-                    f"Must increase route length by {old_start - droplet_arrival} to prevent droplet from hanging in the air before child operation starts."
-                )
                 for _ in range(0, old_start - droplet_arrival):
                     route.path.insert(-1, route.path[-1])
             else:
-                print(f"No delay needed for child {child.id} as it starts at the same time as droplet arrival.")
-
+                pass
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
 
         for active_op in active_ops:
@@ -372,16 +364,16 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
             protocol[i].add(route.path[path_idx])
 
         # Convert positions to board representation
-        board = [["0" for _ in range(16)] for _ in range(8)]
-        for pos in protocol[i]:
-            board[pos.y][pos.x] = "1"
+        #board = [["0" for _ in range(16)] for _ in range(8)]
+        #for pos in protocol[i]:
+        #    board[pos.y][pos.x] = "1"
 
         # Print board as string representation
-        print(f"Frame {i}:")
-        for row in board:
-            print("".join(row))
+        #print(f"Frame {i}:")
+        #for row in board:
+        #    print("".join(row))
 
-        i += 1
-        max_tick = max([op.end_time for op in ops])
+        #i += 1
+        #max_tick = max([op.end_time for op in ops])
 
     return protocol

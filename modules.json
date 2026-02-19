@@ -27,10 +27,10 @@
             "stop_animation": "animations/top_right_dispense.json"
         },
         {
-            "pos": [3, 3],
+            "pos": [4, 2],
             "id": "mix-0",
             "type": "mix",
-            "ports": [[3, 2], [5, 2], [5, 5], [3, 5]],
+            "ports": [[4, 1], [6, 1], [6, 4], [4, 4]],
             "storage": 2,
             "width": 3,
             "height": 2,
