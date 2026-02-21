@@ -3,7 +3,7 @@ import argparse
 
 from api.op import load_ops_from_dot as load_graph
 from api.module import Module, load_modules
-from api.util import Type, Position
+from api.util import Type
 
 from scheduler import list_scheduler as schedule
 from placer import left_edge_bind_modules as placer
@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--input",
     type=str,
-    default="example_protocols/largegraph.dot",
+    default="example_protocols/baseline_34_256.result",
     help="Path to input dot file representing the operation graph.",
 )
 parser.add_argument(
@@ -85,6 +85,9 @@ AVAILABLE_MODULES: dict[Type, int] = {
     Type.WASTE: wastes,
 }
 scheduled_ops = schedule(load_graph(args.input), AVAILABLE_MODULES, max_droplets)
+
+for op in scheduled_ops:
+    print(op)
 
 placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 

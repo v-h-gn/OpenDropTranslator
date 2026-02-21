@@ -66,7 +66,7 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
 
     # Identify operations active at the current tick
     active_ops = [op for op in ops if op.start_time <= tick < op.end_time and op not in routed_ops]
-    print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
+    #print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
     active_mods = [op.module for op in active_ops]
     occupied_cells: dict[Op, set[Position]] = get_no_go_cells(active_ops, active_mods)
 
@@ -76,9 +76,9 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
         occupied.update(cells)
 
     # Print summary before routing
-    print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
-    for op in active_ops:
-        print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
+    #print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
+    # for op in active_ops:
+        #print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
 
     # Find routes for each active operation
     for op in active_ops:
@@ -86,7 +86,7 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
 
         # If already routed, skip
         if op in routed_ops:
-            print(f"Skipping routing for {op.id} as it has already been routed.")
+            # print(f"Skipping routing for {op.id} as it has already been routed.")
             continue
 
         # Route from each parent to this operation
@@ -95,7 +95,7 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
 
             # If parent and child are on the same module, skip routing
             if parent_mod == mod:
-                print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
+                #print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
             src, dst = parent_mod.get_nearest_ports(tick, mod)
@@ -115,7 +115,7 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
                     ),
                 )
                 routes.append((op, parent, route))
-                print(f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}")
+                # print(f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}")
                 routed_ops.add(op)
             except RuntimeError as e:
                 print(f"Failed to route from {parent.id} to {op.id}: {e}")
@@ -211,13 +211,11 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
     while i <= max_tick:
         # For each tick, determine which operations are active and which routes are active
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
-        #print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
+        print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
         active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
-        #print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
-
+        print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
         for child, parent, route in active_routes:
             droplet_arrival = parent.end_time + len(route.path)
-            droplet_begin = parent.end_time
             difference = droplet_arrival - child.start_time
             old_start = child.start_time
 
@@ -349,7 +347,7 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
                     protocol.insert(parent.end_time + 1, set())
             elif old_start > droplet_arrival:
                 for _ in range(0, old_start - droplet_arrival):
-                    route.path.insert(-1, route.path[-1])
+                    route.path.insert(0, route.src)
             else:
                 pass
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
@@ -373,7 +371,7 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
         #for row in board:
         #    print("".join(row))
 
-        #i += 1
-        #max_tick = max([op.end_time for op in ops])
+        i += 1
+        max_tick = max([op.end_time for op in ops])
 
     return protocol
