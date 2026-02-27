@@ -56,7 +56,7 @@
             "pos": [10, 7],
             "id": "storage-0",
             "type": "storage",
-            "ports": [[10, 6], [9, 7]],
+            "ports": [[10, 6], [9, 7], [11,7]],
             "storage": 1,
             "width": 1,
             "height": 1,
@@ -82,7 +82,7 @@
             "pos": [5, 7],
             "id": "storage-2",
             "type": "storage",
-            "ports": [[5, 6], [6, 7]],
+            "ports": [[5, 6], [6, 7], [4, 7]],
             "storage": 1,
             "width": 1,
             "height": 1,
@@ -100,9 +100,9 @@
             "width": 1,
             "height": 1,
             "pad": 1,
-            "load_animation": "animations/waste.json",
-            "exec_animation": "animations/waste.json",  
-            "stop_animation": "animations/waste.json"
+            "load_animation": "animations/bottom_left_out.json",
+            "exec_animation": "animations/bottom_left_out.json",  
+            "stop_animation": "animations/bottom_left_out.json"
         }
     ]
 }

@@ -11,6 +11,8 @@ class Route:
     src: Position
     dst: Position
     path: list[Position]
+    start: int = -1
+    end: int = -1
 
     def prev(self, tick: int) -> Position | None:
         """Get droplet position at given tick - 1."""
@@ -32,7 +34,11 @@ class Route:
     
     def stall(self, tick: int) -> None:
         """Insert a stall at the given tick"""
-        self.path.insert(tick, self.path[tick-1])
+        if (tick == 0):
+            self.path.insert(0, self.src)
+        else:
+            self.path.insert(tick, self.path[tick-1])
+        self.end += 1
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, Route):

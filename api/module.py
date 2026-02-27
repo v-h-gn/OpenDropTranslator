@@ -86,15 +86,6 @@ class Module:
         """Check if a position is within the module's area."""
         return (self.pos.x <= pos.x < self.pos.x + self.width) and (self.pos.y <= pos.y < self.pos.y + self.height)
 
-    def get_nearest_ports(self, tick: int, other_mod: "Module") -> tuple[Position, Position]:
-        """Get the closest unused entrance/exit pairs for the given module."""
-        unused_self_ports = self.get_unused_ports(tick)
-        unused_other_ports = other_mod.get_unused_ports(tick)
-
-        pairs = [(p1, p2) for p1 in unused_self_ports for p2 in unused_other_ports]
-
-        return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
-
     def get_nearest_internal_pos(self, pos: Position) -> Position:
         """Get the nearest internal position from position pos."""
         internal_positions = [
@@ -173,6 +164,16 @@ class Module:
                 modules_by_type[mod.type] = []
             modules_by_type[mod.type].append(mod)
         return modules_by_type
+    
+    @staticmethod
+    def get_nearest_ports(parent: "Module", child: "Module", tick1: int, tick2: int) -> tuple[Position, Position]:
+        """Get the closest unused entrance/exit pairs for the given module."""
+        unused_parent_ports = parent.get_unused_ports(tick1)
+        unused_child_ports = child.get_unused_ports(tick2)
+
+        pairs = [(p1, p2) for p1 in unused_parent_ports for p2 in unused_child_ports]
+
+        return min(pairs, key=lambda pair: pair[0].manhattan_distance(pair[1]))
 
 
 @dataclass
@@ -238,6 +239,9 @@ class WasteModule(ReservoirModule):
     exec_time: int = 0
     stop_time: int = 0
     duration: int = load_time + exec_time + stop_time
+
+    def __load_animation__(self, tick: int, start: int, end: int) -> set[Position]:
+        return get_frames(self.load_animation)[tick]
 
     def __repr__(self) -> str:
         return f"Module: {self.id}, Type: {self.type}"
@@ -308,22 +312,33 @@ class MixModule(Module):
         if frame_idx == 0:
             return {self.pos + Position(0, 0), self.pos + Position(2, 0)}
         if frame_idx >= 1:
-            nearest_exit_left = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
-            )
-            nearest_exit_right = min(
-                exits,
-                key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
-            )
+            if(len(exits) == 2):
+                nearest_exit_left = min(
+                    exits,
+                    key=lambda port: port.manhattan_distance(self.pos + Position(0, 0)),
+                )
+                nearest_exit_right = min(
+                    exits,
+                    key=lambda port: port.manhattan_distance(self.pos + Position(2, 0)),
+                )
 
-            route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
-            route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, set())
+                route_left = path_find(self.pos + Position(0, 0), nearest_exit_left, set())
+                route_right = path_find(self.pos + Position(2, 0), nearest_exit_right, set())
 
-            return {
-                (route_left[frame_idx - 1] if frame_idx - 1 < len(route_left) else nearest_exit_left),
-                (route_right[frame_idx - 1] if frame_idx - 1 < len(route_right) else nearest_exit_right),
-            }
+                return {
+                    (route_left[frame_idx - 1] if frame_idx - 1 < len(route_left) else nearest_exit_left),
+                    (route_right[frame_idx - 1] if frame_idx - 1 < len(route_right) else nearest_exit_right),
+                }
+            else:
+                nearest_exit = exits[0]
+
+                nearest_droplet_pos = self.pos + Position(0, 0) if nearest_exit.manhattan_distance(self.pos + Position(0, 0)) < nearest_exit.manhattan_distance(self.pos + Position(2, 0)) else self.pos + Position(2, 0)
+                route = path_find(nearest_droplet_pos, nearest_exit, set())
+
+                return {
+                    (route[frame_idx - 1] if frame_idx - 1 < len(route) else nearest_exit),
+                    (self.pos + Position(2, 0) if nearest_droplet_pos == self.pos + Position(0, 0) else self.pos + Position(0, 0)),
+                }
         else:
             raise ValueError(f"Invalid frame index {frame_idx} for stop animation of MixModule {self.id}.")
 

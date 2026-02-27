@@ -127,3 +127,16 @@ def path_find(
                 new_route = (route_src, neighbor, copy.deepcopy(route_path) + [neighbor])
                 q.append(new_route)
     raise RuntimeError(f"No route found from {src} to {dst}")
+
+def pos_to_reservoir(pos: Position) -> str:
+    """Convert a position to a reservoir name."""
+    if pos == Position(1, 1):
+        return "top_left"
+    elif pos == Position(14, 1):
+        return "top_right"
+    elif pos == Position(1, 6):
+        return "bottom_left"
+    elif pos == Position(14, 6):
+        return "bottom_right"
+    else:
+        return "invalid"

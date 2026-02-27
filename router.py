@@ -1,6 +1,6 @@
-from api.util import Position, Type, path_find
+from api.util import Position, get_frames, path_find, pos_to_reservoir
 from api.op import Op
-from api.module import Module, Port
+from api.module import Module, Port, ReservoirModule
 from api.route import Route
 
 irv = Position.irv
@@ -68,17 +68,13 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
     active_ops = [op for op in ops if op.start_time <= tick < op.end_time and op not in routed_ops]
     #print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
     active_mods = [op.module for op in active_ops]
+    
     occupied_cells: dict[Op, set[Position]] = get_no_go_cells(active_ops, active_mods)
 
-    # Combine all occupied cells into a single set
-    occupied = set[Position]()
-    for cells in occupied_cells.values():
-        occupied.update(cells)
-
     # Print summary before routing
-    #print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
-    # for op in active_ops:
-        #print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
+    print(f"Tick {tick}: Attempting to route {len(active_ops)} active operations.")
+    for op in active_ops:
+        print(f"Op {op.id} on module {op.module} from {op.start_time} to {op.end_time}")
 
     # Find routes for each active operation
     for op in active_ops:
@@ -98,10 +94,31 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
                 #print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
-            src, dst = parent_mod.get_nearest_ports(tick, mod)
+            # Check for bidirectional conflict: if there's already a route from mod→parent_mod
+            bidirectional_conflict = False
+            for existing_op, existing_parent, existing_route in routes:
+                # Check if existing route goes in opposite direction (mod→parent_mod)
+                if (existing_parent.module == mod and existing_op.module == parent_mod):
+                    # Check for temporal overlap: parent.end_time (when new route starts) overlaps with existing route
+                    if not (parent.end_time >= existing_route.end or existing_route.start >= op.start_time):
+                        # Bidirectional conflict detected - delay this operation
+                        conflict_delay = existing_route.end - parent.end_time
+                        print(f"Bidirectional conflict detected: {parent.id}→{op.id} conflicts with {existing_parent.id}→{existing_op.id}")
+                        print(f"Delaying operation {op.id} by {conflict_delay} ticks to sequence routes")
+                        for other_op in ops:
+                            if other_op.start_time >= op.start_time:
+                                other_op.delay(conflict_delay, propagate=False)
+                        bidirectional_conflict = True
+                        break
+            
+            if bidirectional_conflict:
+                # Skip this route for now - it will be picked up in the next tick
+                continue
+
+            src, dst = Module.get_nearest_ports(parent_mod, mod, parent.end_time, op.start_time)
 
             parent_mod.used_ports[src][parent.end_time] = Port.EXIT
-            mod.used_ports[dst][op.start_time] = Port.ENTRANCE
+
             # Remove src and dst from occupied cells to allow routing to/from these points
             try:
                 route = Route(
@@ -114,7 +131,24 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
                         board_size=(16, 8),
                     ),
                 )
+                route.start = parent.end_time
+                route.end = route.start + len(route.path)
+
+                delay = route.end - op.start_time
+                
+                if delay > 0:
+                    # print(f"Routing from {parent.id} to {op.id} requires a delay of {delay} ticks. Delaying child operation and all subsequent operations accordingly.")
+                    for other_op in ops:
+                        if other_op.start_time >= op.start_time:
+                            # print(f"Delaying operation {other_op.id} from {other_op.start_time}-{other_op.end_time} to {other_op.start_time + delay}-{other_op.end_time + delay}")
+                            other_op.delay(delay, propagate=False)
+                elif delay < 0:
+                    print(f"Routing from {parent.id} to {op.id} is faster than the scheduled start time by {-delay} ticks. Inserting stalls in the route to delay it accordingly.")
+                    for _ in range(0, -delay):
+                        route.stall(0)
                 routes.append((op, parent, route))
+                mod.used_ports[dst][route.end] = Port.ENTRANCE
+
                 # print(f"Successfully routed from {parent.id} of type {parent.type} to {op.id} of type {op.type}")
                 routed_ops.add(op)
             except RuntimeError as e:
@@ -141,33 +175,46 @@ def all_cycle_IRV(route: Route, compact_route: Route, cycle: int) -> bool:
         or irv(r_pos_next, cr_pos)
         or irv(r_pos, cr_pos)
         or irv(r_pos_prev, cr_pos_prev)
+        or irv(r_pos_next, cr_pos_next)
     )
 
 
 def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
     """Parallelize sequential routes while respecting interference regions, adding stalls if necessary."""
     compacted_routes = list[Route]()
-    for _, _, route in routes:
+    for i, (child, parent, route) in enumerate(routes):
         route_must_stall = False
+        MAX_STALLS = 128  # Prevent infinite loops, in worst case we may need to stall at every step
+        stalls = 0
         cycle = 0
         # print(f"Compacting route from {route.src} to {route.dst} with initial length {len(route.path)}")
         # print_route(route)
         while cycle < len(route.path):
             # Check for interference with other routes
+            other_route = None
+            rerouting = False
             for other_route in compacted_routes:
                 # print(f"Checking interference with route from {other_route.src} to {other_route.dst}")
                 # print_route(other_route)
-                if cycle < len(other_route.path):
-                    if all_cycle_IRV(route, other_route, cycle):
-                        route_must_stall = True
-                        break
-
+                if route.end <= other_route.start or route.start >= other_route.end:
+                    # No temporal overlap, so no interference
+                    continue                   
+                    
+                if cycle < len(other_route.path) and all_cycle_IRV(route, other_route, cycle):
+                    route_must_stall = True
+                    break
+            if rerouting:
+                continue
             if route_must_stall:
                 # Insert a stall by repeating the current position
                 route.stall(cycle - 2)
                 route_must_stall = False
+                stalls += 1
+                if stalls >= MAX_STALLS and other_route is not None:
+                    raise RuntimeError(f"Warning: Maximum stalls reached while compacting route from {route.src} to {route.dst} vs {other_route.src} to {other_route.dst}. Route may still have IRVs.")
             else:
                 cycle += 1
+            
         compacted_routes.append(route)
 
 
@@ -211,155 +258,40 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
     while i <= max_tick:
         # For each tick, determine which operations are active and which routes are active
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
-        print(f"Tick {i}: Active operations: {[op.id for op in active_ops]}")
         active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
-        print(f"Tick {i}: Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
+        
+        print(f"Tick {i}")
+        print(f"Active operations: {[op.id for op in active_ops]}")
+        print(f"Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
+        print("----")
+
+        active_ops = [op for op in ops if op.start_time <= i < op.end_time]
+
         for child, parent, route in active_routes:
             droplet_arrival = parent.end_time + len(route.path)
-            difference = droplet_arrival - child.start_time
-            old_start = child.start_time
-
-            #print(f"Droplet from {parent.id}-{parent.type} to {child.id}-{child.type} arrives at t={droplet_arrival}, child starts at {child.start_time}, difference is {difference}")
-            # If the child operation starts before the droplet arrives
-            if old_start < droplet_arrival:
-                #print(f"Must delay all operations starting at or after {child.start_time} by {difference}.")
-
-                for op in ops:
-                    if op.start_time >= old_start:
-                        #print(f"Delaying operation {op.id} from {op.start_time}-{op.end_time} to {op.start_time + difference}-{op.end_time + difference}")
-                        op.delay(difference, propagate=False)
-
-                for mod in mods:
-                    # print(f"Delaying module {mod.id} by {difference} ticks.")
-                    for _, port_list in mod.used_ports.items():
-                        # Insert UNUSED ports at the position where delayed operations start
-                        # This shifts all port statuses for delayed operations forward by 'difference'
-                        for _ in range(difference):
-                            port_list.insert(old_start, Port.UNUSED)
-
-                # After delaying operations and shifting port lists, we need to remark all ports
-                # that correspond to the routes. The issue: when we insert UNUSED at old_start,
-                # we shift ALL port markings at position >= old_start forward by 'difference'.
-                # But operations with start_time < old_start are NOT delayed, yet their EXIT ports
-                # (which might be at position >= old_start) DO get shifted, creating a mismatch.
-                # Solution: Clear all port markings and remark them at the correct positions.
-                #print(f"Remarking ports for all routes after delay to ensure consistency...")
+            delta_t = child.start_time - droplet_arrival
+            if delta_t > 0:
+                for _ in range(0, delta_t):
+                    route.stall(0)    
+                child.module.used_ports[route.dst][child.start_time] = Port.ENTRANCE
                 
-                # First, clear all EXIT and ENTRANCE markings
-                for mod in mods:
-                    for port in mod.ports:
-                        for tick_idx in range(len(mod.used_ports[port])):
-                            if mod.used_ports[port][tick_idx] in (Port.EXIT, Port.ENTRANCE):
-                                mod.used_ports[port][tick_idx] = Port.UNUSED
-                
-                # Now remark all ports based on current operation times
-                for child_op, parent_op, route_obj in routes:
-                    # The route stores which ports were originally selected
-                    src = route_obj.src
-                    dst = route_obj.dst
-                    
-                    # Remark EXIT at parent's current end_time
-                    if parent_op.end_time < len(parent_op.module.used_ports[src]):
-                        parent_op.module.used_ports[src][parent_op.end_time] = Port.EXIT
-                        #print(f"Remarked EXIT port at {src} for {parent_op.id} at time {parent_op.end_time}")
-                    
-                    # Remark ENTRANCE at child's current start_time  
-                    if child_op.start_time < len(child_op.module.used_ports[dst]):
-                        child_op.module.used_ports[dst][child_op.start_time] = Port.ENTRANCE
-                        #print(f"Remarked ENTRANCE port at {dst} for {child_op.id} at time {child_op.start_time}")
-
-                for op in ops:
-                    if op.start_time >= old_start:
-                        #print(f"After delay, operation {op.id} starts at {op.start_time} and ends at {op.end_time}")
-                        used_exits = [
-                            pos
-                            for pos, port_type in op.module.used_ports.items()
-                            if port_type[op.end_time] == Port.EXIT
-                        ]
-                        used_entrances = [
-                            pos
-                            for pos, port_type in op.module.used_ports.items()
-                            if port_type[op.start_time] == Port.ENTRANCE
-                        ]
-
-                        if op.type is Type.INPUT_0 or op.type is Type.INPUT_1:
-                            assert (
-                                len(used_exits) == 1
-                            ), f"Operation {op.id} of type {op.type} has no exits at start time {op.start_time} after delay!"
-                        elif op.type is Type.OUTPUT or op.type is Type.WASTE:
-                            assert (
-                                len(used_entrances) == 1
-                            ), f"Operation {op.id} of type {op.type} has no entrances at end time {op.end_time} after delay!"
-                        elif op.type is Type.MIX:
-                            # We have 2,
-                            # cases one parent is mix, neither parent is mix
-                            if len(op.children) == 1:
-                                # output case, only 1 exit
-                                assert (
-                                    len(used_exits) == 1
-                                ), f"Operation {op.id} of type MIX has no exits at start time {op.start_time} after delay!"
-                            elif any(parent.type is Type.MIX for parent in op.parents) and any(
-                                child.type is Type.MIX for child in op.children
-                            ):
-                                # If both a parent and child are MIX, we may have 3 entrances/exits due to the way we route between MIX modules. In this case, we just check that there are at least 2.
-                                assert (
-                                    len(used_entrances) == 1
-                                ), f"Operation {op.id} of type MIX doesnt have 1 entrance at start time {op.end_time} after delay!"
-                                assert (
-                                    len(used_exits) == 1
-                                ), f"Operation {op.id} of type MIX doesnt have 1 exits at end time {op.start_time} after delay!"
-                            elif any(parent.type is Type.MIX for parent in op.parents) and not any(
-                                child.type is Type.MIX for child in op.children
-                            ):
-                                assert (
-                                    len(used_entrances) == 1
-                                ), f"Operation {op.id} of type MIX has doesnt have 1 entrances at start time {op.start_time} after delay!"
-                                assert (
-                                    len(used_exits) == 2
-                                ), f"Operation {op.id} of type MIX doesnt have 2 exits at end time {op.end_time} after delay!"
-                            elif not any(parent.type is Type.MIX for parent in op.parents) and any(
-                                child.type is Type.MIX for child in op.children
-                            ):
-                                assert (
-                                    len(used_entrances) == 2
-                                ), f"Operation {op.id} of type MIX has doesnt have 2 entrances at start time {op.start_time} after delay!"
-                                assert (
-                                    len(used_exits) == 1
-                                ), f"Operation {op.id} of type MIX doesnt have 1 exits at end time {op.end_time} after delay!"
-                            elif not any(parent.type is Type.MIX for parent in op.parents) and not any(
-                                child.type is Type.MIX for child in op.children
-                            ):
-                                assert (
-                                    len(used_entrances) == 2
-                                ), f"Operation {op.id} of type MIX has doesnt have 2 entrances at start time {op.start_time} after delay!"
-                                assert (
-                                    len(used_exits) == 2
-                                ), f"Operation {op.id} of type MIX doesnt have 2 exits at end time {op.end_time} after delay!"
-                        else:
-                            assert (
-                                len(used_exits) == 1
-                            ), f"Operation {op.id} of type {op.type} has no exits at start time {op.start_time} after delay!"
-                            assert (
-                                len(used_entrances) == 1
-                            ), f"Operation {op.id} of type {op.type} has no entrances at end time {op.end_time} after delay!"
-                # Add route length frames to protocol
-                for _ in range(difference):
-                    protocol.insert(parent.end_time + 1, set())
-            elif old_start > droplet_arrival:
-                for _ in range(0, old_start - droplet_arrival):
-                    route.path.insert(0, route.src)
-            else:
-                pass
-        active_ops = [op for op in ops if op.start_time <= i < op.end_time]
 
         for active_op in active_ops:
             # Convert active operations to protocol frames
             module = active_op.module
             protocol[i].update(module.animation(i, active_op.start_time, active_op.end_time))
 
-        for child, parent, route in active_routes:
+        for _, parent, route in active_routes:
+            # Convert active routes to protocol frames
             path_idx = i - parent.end_time
             protocol[i].add(route.path[path_idx])
+        
+        for mod in mods:
+            active_mod_ops = [op for op in active_ops if op.module == mod]
+            if isinstance(mod, ReservoirModule) and not active_mod_ops:
+                reservoir = pos_to_reservoir(mod.pos)
+                active_animation = get_frames(f"animations/{reservoir}_active.json")
+                protocol[i].update(active_animation[0])
 
         # Convert positions to board representation
         #board = [["0" for _ in range(16)] for _ in range(8)]
