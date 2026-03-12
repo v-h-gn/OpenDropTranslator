@@ -184,7 +184,6 @@ def compact_routes(routes: list[tuple[Op, Op, Route]], ops: list[Op], tick: int)
         while cycle < len(route.path):
             # Check for interference with other routes
             other_route = None
-            rerouting = False
             for other_route in compacted_routes:
                 # print(f"Checking interference with route from {other_route.src} to {other_route.dst}")
                 # print_route(other_route)
@@ -195,8 +194,7 @@ def compact_routes(routes: list[tuple[Op, Op, Route]], ops: list[Op], tick: int)
                 if cycle < len(other_route.path) and all_cycle_IRV(route, other_route, cycle):
                     route_must_stall = True
                     break
-            if rerouting:
-                continue
+
             if route_must_stall:
                 # Insert a stall by repeating the current position
                 route.stall(cycle - 2)
@@ -214,6 +212,7 @@ def compact_routes(routes: list[tuple[Op, Op, Route]], ops: list[Op], tick: int)
 
                     parent.module.used_ports[route.src][parent.end_time] = Port.UNUSED
                     child.module.used_ports[route.dst][child.start_time] = Port.UNUSED
+                    active_ops.append(child)
                     active_mods.append(child.module)
                     if not parent_ports and not child_ports:
                         print(f"No available ports for rerouting from {parent.id} to {child.id}. Cannot resolve IRV.")
@@ -246,6 +245,7 @@ def compact_routes(routes: list[tuple[Op, Op, Route]], ops: list[Op], tick: int)
                         
                         parent.module.used_ports[src][parent.end_time] = Port.EXIT
                         child.module.used_ports[dst][child.start_time] = Port.ENTRANCE
+                        active_ops.remove(child)
                     except RuntimeError as e:
                         print(f"Failed to reroute from {parent.id} to {child.id}: {e}")
                         raise e
