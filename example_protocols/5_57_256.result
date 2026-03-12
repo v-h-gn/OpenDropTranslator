@@ -1,0 +1,49 @@
+digraph G {
+    n1 [label="(0,1)"];
+    n2 [label="(1,1)"];
+    n3 [label="mix"];
+    n4 [label="(0,1)"];
+    n5 [label="mix"];
+    n6 [label="(0,1)"];
+    n7 [label="(1,1)"];
+    n8 [label="(0,1)"];
+    n9 [label="(0,1)"];
+    n10 [label="mix"];
+    n11 [label="mix"];
+    n12 [label="(0,1)"];
+    n13 [label="mix"];
+    n14 [label="mix"];
+    n15 [label="mix"];
+    n16 [label="mix"];
+    n17 [label="(0,1)"];
+    n18 [label="mix"];
+    n19 [label="mix"];
+    
+    n20 [label="(0,1)"];
+    n21 [label="(1,1)"];
+    n22 [label="mix"];
+    n1 -> n3;
+    n2 -> n3;
+    n3 -> n5;
+    n4 -> n5;
+    n5 -> n10;
+    n6 -> n10;
+    n7 -> n11;
+    n8 -> n11;
+    n9 -> n13;
+    n10 -> n13;
+    n10 -> n14;
+    n11 -> n14;
+    n12 -> n15;
+    n13 -> n15;
+    
+    n20 -> n22;
+    n21 -> n22;
+    n22 -> n16;
+    
+    n15 -> n16;
+    n17 -> n18;
+    n16 -> n18;
+    n14 -> n19;
+    n18 -> n19;
+}

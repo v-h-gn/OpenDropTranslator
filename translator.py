@@ -1,6 +1,5 @@
 import argparse
 
-
 from api.op import load_ops_from_dot as load_graph
 from api.module import Module, load_modules
 from api.util import Type
@@ -88,6 +87,27 @@ scheduled_ops = schedule(load_graph(args.input), AVAILABLE_MODULES, max_droplets
 
 for op in scheduled_ops:
     print(op)
+
+## make graphviz visualization of scheduled operations
+paper_figure_file = "baseline_57_256_scheduled.dot"
+file = open(paper_figure_file, "w")
+file.write("digraph G {\n")
+for op in scheduled_ops:
+        if op.type == Type.WASTE:
+            continue
+        label = op.type.value
+        if op.type == Type.INPUT_0:
+            label = "0%"
+        elif op.type == Type.INPUT_1:
+            label = "100%"
+        label += f" ({op.start_time}, {op.end_time})"
+        file.write(f'    {id(op)} [label="{label}"];\n')
+        for child in op.children:
+            if child.type == Type.WASTE:
+                continue
+            file.write(f"    {id(op)} -> {id(child)};\n")
+file.write("}\n")
+file.close()
 
 placer(scheduled_ops, modules_list, list(AVAILABLE_MODULES.keys()))
 

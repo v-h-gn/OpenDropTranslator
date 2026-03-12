@@ -59,16 +59,18 @@ def get_no_go_cells(ops: list[Op], mods: list[Module]) -> dict[Op, set[Position]
     return no_go_cells_by_op
 
 
-def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]) -> list[tuple[Op, Op, Route]]:
+def get_routes(
+    ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op], all_routes: list[tuple[Op, Op, Route]]
+) -> list[tuple[Op, Op, Route]]:
     """Get routes for all operations active at the given tick."""
 
     routes = list[tuple[Op, Op, Route]]()
 
     # Identify operations active at the current tick
     active_ops = [op for op in ops if op.start_time <= tick < op.end_time and op not in routed_ops]
-    #print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
+    # print(f"Active operations at tick {tick}: {[op.id for op in active_ops]}")
     active_mods = [op.module for op in active_ops]
-    
+
     occupied_cells: dict[Op, set[Position]] = get_no_go_cells(active_ops, active_mods)
 
     # Print summary before routing
@@ -91,35 +93,18 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
 
             # If parent and child are on the same module, skip routing
             if parent_mod == mod:
-                #print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
+                # print(f"Skipping routing from {parent.id} to {op.id} as both are on the same module {mod.id}.")
                 continue
 
-            # Check for bidirectional conflict: if there's already a route from mod→parent_mod
-            bidirectional_conflict = False
-            for existing_op, existing_parent, existing_route in routes:
-                # Check if existing route goes in opposite direction (mod→parent_mod)
-                if (existing_parent.module == mod and existing_op.module == parent_mod):
-                    # Check for temporal overlap: parent.end_time (when new route starts) overlaps with existing route
-                    if not (parent.end_time >= existing_route.end or existing_route.start >= op.start_time):
-                        # Bidirectional conflict detected - delay this operation
-                        conflict_delay = existing_route.end - parent.end_time
-                        print(f"Bidirectional conflict detected: {parent.id}→{op.id} conflicts with {existing_parent.id}→{existing_op.id}")
-                        print(f"Delaying operation {op.id} by {conflict_delay} ticks to sequence routes")
-                        for other_op in ops:
-                            if other_op.start_time >= op.start_time:
-                                other_op.delay(conflict_delay, propagate=False)
-                        bidirectional_conflict = True
-                        break
-            
-            if bidirectional_conflict:
-                # Skip this route for now - it will be picked up in the next tick
+            # check if bi-directional route already exists for this parent-child pair
+            existing_route = next((r for r in all_routes if (r[0] == op and r[1] == parent) or (r[0] == parent and r[1] == op)), None)
+            if existing_route is not None:
+                print(f"Skipping routing from {parent.id} to {op.id} as a route already exists between these operations.")
                 continue
-
             src, dst = Module.get_nearest_ports(parent_mod, mod, parent.end_time, op.start_time)
-
+            # Remove src and dst from occupied cells to allow routing to/from these points
             parent_mod.used_ports[src][parent.end_time] = Port.EXIT
 
-            # Remove src and dst from occupied cells to allow routing to/from these points
             try:
                 route = Route(
                     src,
@@ -133,9 +118,8 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
                 )
                 route.start = parent.end_time
                 route.end = route.start + len(route.path)
-
                 delay = route.end - op.start_time
-                
+
                 if delay > 0:
                     # print(f"Routing from {parent.id} to {op.id} requires a delay of {delay} ticks. Delaying child operation and all subsequent operations accordingly.")
                     for other_op in ops:
@@ -143,9 +127,12 @@ def get_routes(ops: list[Op], mods: list[Module], tick: int, routed_ops: set[Op]
                             # print(f"Delaying operation {other_op.id} from {other_op.start_time}-{other_op.end_time} to {other_op.start_time + delay}-{other_op.end_time + delay}")
                             other_op.delay(delay, propagate=False)
                 elif delay < 0:
-                    print(f"Routing from {parent.id} to {op.id} is faster than the scheduled start time by {-delay} ticks. Inserting stalls in the route to delay it accordingly.")
+                    print(
+                        f"Routing from {parent.id} to {op.id} is faster than the scheduled start time by {-delay} ticks. Inserting stalls in the route to delay it accordingly."
+                    )
                     for _ in range(0, -delay):
                         route.stall(0)
+                route.end = route.start + len(route.path)
                 routes.append((op, parent, route))
                 mod.used_ports[dst][route.end] = Port.ENTRANCE
 
@@ -179,9 +166,12 @@ def all_cycle_IRV(route: Route, compact_route: Route, cycle: int) -> bool:
     )
 
 
-def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
+def compact_routes(routes: list[tuple[Op, Op, Route]], ops: list[Op], tick: int) -> None:
     """Parallelize sequential routes while respecting interference regions, adding stalls if necessary."""
     compacted_routes = list[Route]()
+    attempted_ports = set[Position]()
+    active_ops = [op for op in ops if op.start_time <= tick < op.end_time]
+    active_mods = [op.module for op in active_ops]
     for i, (child, parent, route) in enumerate(routes):
         route_must_stall = False
         MAX_STALLS = 128  # Prevent infinite loops, in worst case we may need to stall at every step
@@ -189,6 +179,8 @@ def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
         cycle = 0
         # print(f"Compacting route from {route.src} to {route.dst} with initial length {len(route.path)}")
         # print_route(route)
+        attempted_ports.add(route.src)
+        attempted_ports.add(route.dst)
         while cycle < len(route.path):
             # Check for interference with other routes
             other_route = None
@@ -198,8 +190,8 @@ def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
                 # print_route(other_route)
                 if route.end <= other_route.start or route.start >= other_route.end:
                     # No temporal overlap, so no interference
-                    continue                   
-                    
+                    continue
+
                 if cycle < len(other_route.path) and all_cycle_IRV(route, other_route, cycle):
                     route_must_stall = True
                     break
@@ -211,10 +203,55 @@ def compact_routes(routes: list[tuple[Op, Op, Route]]) -> None:
                 route_must_stall = False
                 stalls += 1
                 if stalls >= MAX_STALLS and other_route is not None:
-                    raise RuntimeError(f"Warning: Maximum stalls reached while compacting route from {route.src} to {route.dst} vs {other_route.src} to {other_route.dst}. Route may still have IRVs.")
+                    
+                    parent_ports = parent.module.get_unused_ports(parent.end_time)
+                    child_ports = child.module.get_unused_ports(child.start_time)
+
+                    src, dst = min([(p1, p2) for p1 in parent_ports for p2 in child_ports if p1 not in attempted_ports and p2 not in attempted_ports], key=lambda pair: pair[0].manhattan_distance(pair[1]))
+                    
+                    attempted_ports.add(src)
+                    attempted_ports.add(dst)
+
+                    parent.module.used_ports[route.src][parent.end_time] = Port.UNUSED
+                    child.module.used_ports[route.dst][child.start_time] = Port.UNUSED
+                    active_mods.append(child.module)
+                    if not parent_ports and not child_ports:
+                        print(f"No available ports for rerouting from {parent.id} to {child.id}. Cannot resolve IRV.")
+                        raise RuntimeError(f"No available ports for rerouting from {parent.id} to {child.id}. Cannot resolve IRV. Maximum stalls reached: {stalls} for route from {route.src} to {route.dst} vs route from {other_route.src} to {other_route.dst}")
+                    try:
+                        reroute = Route(
+                            src,
+                            dst,
+                            path_find(
+                                src=src,
+                                dst=dst,
+                                no_go_cells=get_no_go_cells(active_ops, active_mods)[child],
+                                board_size=(16, 8),
+                            ),
+                        )
+                        reroute.start = parent.end_time
+                        reroute.end = reroute.start + len(reroute.path)
+                        route = reroute
+                        routes[i] = (child, parent, route)
+                        cycle = 0  # Restart compaction for the new route
+                        stalls = 0
+                        delay = route.end - child.start_time
+                        if delay > 0:
+                            for other_op in ops:
+                                if other_op.start_time >= child.start_time:
+                                    other_op.delay(delay, propagate=False)
+                        elif delay < 0:
+                            for _ in range(0, -delay):
+                                route.stall(0)
+                        
+                        parent.module.used_ports[src][parent.end_time] = Port.EXIT
+                        child.module.used_ports[dst][child.start_time] = Port.ENTRANCE
+                    except RuntimeError as e:
+                        print(f"Failed to reroute from {parent.id} to {child.id}: {e}")
+                        raise e
             else:
                 cycle += 1
-            
+
         compacted_routes.append(route)
 
 
@@ -230,9 +267,16 @@ def route(ops: list[Op], mods: list[Module]) -> list[tuple[Op, Op, Route]]:
 
     tick = 0
     while ops_sorted:
-        ops_and_routes = get_routes(ops_sorted, mods, tick, routed_ops=routed_ops)
+        ops_and_routes = get_routes(ops_sorted, mods, tick, routed_ops=routed_ops, all_routes=results)
 
-        compact_routes(ops_and_routes)
+        try:
+            compact_routes(ops_and_routes, ops, tick)
+        except RuntimeError as e:
+            print(f"Error during route compaction at tick {tick}: {e}")
+            print("Current routes:")
+            for r in results:
+                print(f"Route from {r[1].id} to {r[0].id} starting at {r[2].start} with path length {len(r[2].path)}")
+            raise e
 
         results.extend(ops_and_routes)
         routed_ops.update([r[1] for r in ops_and_routes])
@@ -259,11 +303,11 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
         # For each tick, determine which operations are active and which routes are active
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
         active_routes = [route for route in routes if route[1].end_time <= i < route[1].end_time + len(route[2].path)]
-        
-        print(f"Tick {i}")
-        print(f"Active operations: {[op.id for op in active_ops]}")
-        print(f"Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
-        print("----")
+
+        # print(f"Tick {i}")
+        # print(f"Active operations: {[op.id for op in active_ops]}")
+        # print(f"Active routes: [" + ", ".join(f"{r[1].id}->{r[0].id}" for r in active_routes) + "]")
+        # print("----")
 
         active_ops = [op for op in ops if op.start_time <= i < op.end_time]
 
@@ -272,9 +316,8 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
             delta_t = child.start_time - droplet_arrival
             if delta_t > 0:
                 for _ in range(0, delta_t):
-                    route.stall(0)    
+                    route.stall(0)
                 child.module.used_ports[route.dst][child.start_time] = Port.ENTRANCE
-                
 
         for active_op in active_ops:
             # Convert active operations to protocol frames
@@ -285,7 +328,7 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
             # Convert active routes to protocol frames
             path_idx = i - parent.end_time
             protocol[i].add(route.path[path_idx])
-        
+
         for mod in mods:
             active_mod_ops = [op for op in active_ops if op.module == mod]
             if isinstance(mod, ReservoirModule) and not active_mod_ops:
@@ -294,13 +337,13 @@ def convert_to_protocol(ops: list[Op], mods: list[Module], routes: list[tuple[Op
                 protocol[i].update(active_animation[0])
 
         # Convert positions to board representation
-        #board = [["0" for _ in range(16)] for _ in range(8)]
-        #for pos in protocol[i]:
+        # board = [["0" for _ in range(16)] for _ in range(8)]
+        # for pos in protocol[i]:
         #    board[pos.y][pos.x] = "1"
 
         # Print board as string representation
-        #print(f"Frame {i}:")
-        #for row in board:
+        # print(f"Frame {i}:")
+        # for row in board:
         #    print("".join(row))
 
         i += 1
